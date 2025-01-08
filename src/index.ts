@@ -21,22 +21,26 @@ app.get("/auth-state", (req: any, res: any) => {
   return res.json(authState);
 });
 
+//@ts-ignore
 app.get("/", async (req: Request, res: Response) => {
   const { emailAddress, password } = req.query;
-
-  try {
-  const users = await clerkClient.users.getUserList({
-    emailAddress: [`${emailAddress}`],
-  });
-  const id = users.data[0].id;
-  const isPasswordVerified = await clerkClient.users.verifyPassword({
-    password: `${password}`,
-    userId: id,
-  });
-  let verifed = isPasswordVerified.verified;
-  res.json({ verifed });
+  if (!emailAddress || !password) {
+    return res
+      .status(400)
+      .json({ error: "Email Address and Password are required" });
   }
-  catch (error:any) {
+  try {
+    const users = await clerkClient.users.getUserList({
+      emailAddress: [`${emailAddress}`],
+    });
+    const id = users.data[0].id;
+    const isPasswordVerified = await clerkClient.users.verifyPassword({
+      password: `${password}`,
+      userId: id,
+    });
+    let verifed = isPasswordVerified.verified;
+    res.json({ verifed });
+  } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
 });

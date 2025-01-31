@@ -1,49 +1,80 @@
-import { clerkMiddleware, createClerkClient } from "@clerk/express";
-import express, { Request, Response } from "express";
+// src/app.ts
+import express from "express";
 import "dotenv/config";
+import parser from "body-parser";
+import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import morgan from "morgan";
+import { errorHandler } from "./utils/errorHandler";
 
-const port = process.env.PORT || 3000;
+
+// Routes
+import userRouter from "./routes/user";
+import engagementRouter from "./routes/engagement";
+import leadRouter from "./routes/leads";
+
+
+import { validateJWT } from "./middlewares/jwtValidator";
+import connectToDatabase from "./utils/database";
 
 const app = express();
+const port = process.env.PORT || 3000;
 
-const clerkClient = createClerkClient({
-  publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
-  apiUrl: "https://api.clerk.com",
-  secretKey: process.env.CLERK_SECRET_KEY,
+// Security Middleware
+app.use(helmet()); // Adds various HTTP headers for security
+
+app.use(
+  cors({
+    origin: process.env.ALLOWED_ORIGINS?.split(",") || "*",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+// Logging
+app.use(morgan("dev"));
+
+// Rate Limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 5 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
 });
+app.use(limiter);
 
-app.use(clerkMiddleware({ clerkClient }));
-
-app.use(clerkMiddleware());
-//@ts-ignore
-app.get("/auth-state", (req: any, res: any) => {
-  const authState = req.auth;
-  return res.json(authState);
-});
-
-//@ts-ignore
-app.get("/", async (req: Request, res: Response) => {
-  const { emailAddress, password } = req.query;
-  if (!emailAddress || !password) {
-    return res
-      .status(400)
-      .json({ error: "Email Address and Password are required" });
+app.use((req, res, next) => {
+  if (req.path === "/login" || req.path === "/register") {
+    return next(); // Skip validation for login/register routes
   }
-  try {
-    const users = await clerkClient.users.getUserList({
-      emailAddress: [`${emailAddress}`],
-    });
-    const id = users.data[0].id;
-    const isPasswordVerified = await clerkClient.users.verifyPassword({
-      password: `${password}`,
-      userId: id,
-    });
-    let verifed = isPasswordVerified.verified;
-    res.json({ verifed });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
+  validateJWT(req, res, next);
 });
-app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
+
+// Parsing Middleware
+app.use(parser.json());
+app.use(parser.urlencoded({ extended: true }));
+
+// Routes
+app.use("/api", userRouter);
+app.use("/api/user", engagementRouter);
+app.use("/api/lead", leadRouter);
+
+
+// Global Error Handler
+app.use(errorHandler);
+
+// 404 Handler
+app.use((req, res, next) => {
+  res.status(404).json({
+    status: "error",
+    message: "Route not found",
+  });
 });
+
+// Connect to Database and Start Server
+connectToDatabase().then(() => {
+  app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+  });
+});
+
+export default app;

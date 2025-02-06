@@ -24,6 +24,7 @@ export const createEngagementMessageSchema = Joi.object({
   customFields: Joi.object(),
 });
 
+
 export const createReminderSchema = Joi.object({
   leadId: Joi.string().required(),
   title: Joi.string().required(),

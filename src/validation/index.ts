@@ -1,4 +1,25 @@
-import {createEngagementMessageSchema,createCampaignSchema,createReminderSchema} from "./engagementValidation";
-import {userCreateSchema} from "./userValidation"
+import {
+  createEngagementMessageSchema,
+  createCampaignSchema,
+  createReminderSchema,
+} from "./engagementValidation";
+import {WhatsAppvalidators} from "./whatsApp";
+import { userValidationSchema } from "./userValidation";
+import Joi from "joi";
 
-export {createEngagementMessageSchema,createCampaignSchema,createReminderSchema,userCreateSchema}
+export const statusValidationSchema = Joi.object({
+  name: Joi.string().required(),
+});
+
+export const statusUpdateValidationSchema = Joi.object({
+  name: Joi.string().required(),
+  newName: Joi.string().required(),
+});
+
+export {
+  createEngagementMessageSchema,
+  createCampaignSchema,
+  createReminderSchema,
+  userValidationSchema,
+    WhatsAppvalidators,
+};

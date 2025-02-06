@@ -1,37 +1,36 @@
 import mongoose from "mongoose";
 
-const leadModelSchema = new mongoose.Schema({
-  id: {
-    type: String,
-    required: true,
-    unique: true,
-  },
-  name: {
-    type: String,
-    required: true,
-  },
+const userSchema = new mongoose.Schema({
   email: {
     type: String,
     required: true,
     unique: true,
   },
-  phone: {
+  password: {
     type: String,
     required: true,
   },
-  status: {
+  phoneNumber: {
     type: String,
-    default: "NEW",
+    required: true,
   },
-  category: {
+  name: {
     type: String,
-    default: "GENERAL",
+    required: true,
   },
-  notes: String,
+  companyName: {
+    type: String,
+    default: "Company Name",
+  },
+  companyLogo: {
+    type: String,
+    default:
+      "https://res.cloudinary.com/dyfhbqtjm/image/upload/f_auto,q_auto/sg1ufdsz8ww9mccikyc5",
+  },
   createdAt: {
     type: Date,
     default: Date.now,
   },
 });
 
-export const LeadModel = mongoose.model("Leads", leadModelSchema);
+export const UserModel = mongoose.model("User", userSchema);

@@ -2,10 +2,12 @@ import { Request, Response, NextFunction } from "express";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import { AppError } from "../utils/errorHandler";
 import dotenv from "dotenv";
+import { getLeadById } from "../database/leads";
 
 dotenv.config();
 interface CustomRequest extends Request {
   user?: string | JwtPayload;
+  lead?: Object;
 }
 
 export const validateJWT = (
@@ -13,17 +15,17 @@ export const validateJWT = (
   res: Response,
   next: NextFunction
 ) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return next(new AppError("Unauthorized: No token provided", 401));
-  }
-  
-
-  const token = authHeader.split(" ")[1];
+  const { clientId } = req.body;
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string);
-    req.user = decoded; // Attach user payload to request
+    if (!clientId) {
+      return next();
+    }
+    const lead = getLeadById(clientId);
+    if (!lead) {
+      return next(new AppError("Unauthorized: Invalid token", 401));
+    }
+    req.lead = lead; // Attach user payload to request
     next();
   } catch (error) {
     return next(new AppError("Unauthorized: Invalid token", 401));

@@ -1,44 +1,93 @@
-import mongoose from 'mongoose';
-import { MessageType ,CommunicationChannel} from '../types/engagement';
+import mongoose, { Document, Schema } from "mongoose";
+import { MessageModel } from "./MessageModel";
 
-const engagementMessageSchema = new mongoose.Schema({
-  leadId: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'Lead', 
-    required: true 
+// Define an interface for the Engagement document
+export interface IEngagement extends Document {
+  category: string;
+  status: string;
+  messages: mongoose.Types.ObjectId[];
+  timestamp: Date;
+  totalMessages: number;
+  replies: number;
+}
+// Define the Engagement schema
+const EngagementSchema = new Schema<IEngagement>({
+  category: {
+    type: String,
+    ref: "Category", // Reference to Category collection
+    validate: {
+      validator: async function (this: any, value: string): Promise<boolean> {
+        // Ensure that a Category with the given name exists
+        const category = await mongoose
+          .model("Category")
+          .findOne({ name: value });
+        return category !== null;
+      },
+      message: "Category must exist in CategoryModel",
+    },
+    required: true,
   },
-  content: { 
-    type: String, 
-    required: true 
+
+  status: {
+    type: String,
+    ref: "Status", // Reference to Status collection
+    validate: {
+      validator: async function (this: any, value: string): Promise<boolean> {
+        // Ensure that a Status with the given name exists
+        const status = await mongoose.model("Status").findOne({ name: value });
+        return status !== null;
+      },
+      message: "Status must exist in StatusModel",
+    },
+    required: true,
   },
-  type: { 
-    type: String, 
-    enum: Object.values(MessageType), 
-    required: true 
+
+  messages: {
+    type: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "Message", // Reference to Message collection
+        validate: {
+          validator: async function (
+            this: any,
+            value: mongoose.Types.ObjectId
+          ): Promise<boolean> {
+            const parent = this.parent();
+            const query: Record<string, any> = { engagementID: value };
+            if (parent && parent.category) {
+              query.category = parent.category;
+            }
+            if (parent && parent.status) {
+              query.status = parent.status;
+            }
+            const message = await MessageModel.findOne(query);
+            return message !== null;
+          },
+          message:
+            "Message must exist and match the engagement category and status",
+        },
+      },
+    ],
+    default: [],
   },
-  channel: { 
-    type: String, 
-    enum: Object.values(CommunicationChannel), 
-    required: true 
+
+  timestamp: {
+    type: Date,
+    default: Date.now,
   },
-  status: { 
-    type: String, 
-    enum: ['SENT', 'DELIVERED', 'READ', 'FAILED'], 
-    default: 'SENT' 
+
+  totalMessages: {
+    type: Number,
+    default: 0,
   },
-  attachments: [{
-    type: { type: String },
-    url: { type: String },
-    name: { type: String }
-  }],
-  sentAt: { 
-    type: Date, 
-    default: Date.now 
+
+  replies: {
+    type: Number,
+    default: 0,
   },
-  customFields: {
-    type: Map, 
-    of: String 
-  }
 });
 
-export const EngagementMessageModel = mongoose.model('EngagementMessage', engagementMessageSchema);
+export const EngagementModel = mongoose.model<IEngagement>(
+  "Engagement",
+  EngagementSchema
+);

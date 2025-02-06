@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from 'express';
-import { ValidationError } from 'joi';
 
 export class AppError extends Error {
   statusCode: number;

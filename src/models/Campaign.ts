@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { CommunicationChannel } from '../types/engagement';
 
+
 const campaignSchema = new mongoose.Schema({
   name: { 
     type: String, 

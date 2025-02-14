@@ -15,8 +15,11 @@ import leadRouter from "./routes/leads";
 import settingsRouter from "./routes/settings";
 import WhatsAppRouter from "./routes/whatsApp";
 import EmailRouter from "./routes/Email";
-
+import ReminderRouter from "./routes/Reminder";
+import testRouter from "./routes/testRoutes";
+import statusRouter from "./routes/status";
 import { validateJWT } from "./middlewares/jwtValidator";
+import { fetchClient } from "./middlewares/fetchClient";
 import connectToDatabase from "./utils/database";
 import multer from "multer";
 
@@ -33,7 +36,7 @@ app.use(
   cors({
     origin: process.env.ALLOWED_ORIGINS?.split(",") || "*",
     methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "client-id"],
   })
 );
 
@@ -57,7 +60,7 @@ app.use((req, res, next) => {
   }
   validateJWT(req, res, next);
 });
-
+//app.use(fetchClient);
 app.disable("etag");
 
 app.use((req, res, next) => {
@@ -76,19 +79,17 @@ app.use((req, res, next) => {
 app.use(parser.json());
 app.use(parser.urlencoded({ extended: true }));
 
-app.post("/test", (req, res) => {
-  const body = req.body;
-  console.log(body);
-  res.json({ message: "Received" });
-});
-
 // Routes
 app.use("/api", userRouter);
-app.use("/api/user", engagementRouter);
+app.use("/api/engagements", engagementRouter);
 app.use("/api/lead", leadRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/whatsapp", WhatsAppRouter);
 app.use("/api/email", EmailRouter);
+app.use("/api/reminder", ReminderRouter)
+app.use("/api/status", statusRouter);
+
+app.use("/test", testRouter);
 
 // Global Error Handler
 app.use(errorHandler);

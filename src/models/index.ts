@@ -1,5 +1,5 @@
 import {CampaignModel} from './Campaign'
-import {EngagementMessageModel} from './engagementModel'
+import {EngagementModel} from './engagementModel'
 import {ReminderModel} from './Reminder'
 
-export {CampaignModel, EngagementMessageModel, ReminderModel}
+export {CampaignModel, EngagementModel, ReminderModel}

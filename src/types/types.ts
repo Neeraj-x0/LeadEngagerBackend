@@ -2,11 +2,13 @@ import express from 'express';
 
 interface Request extends express.Request {
     query: {
+        leadId: any;
+        engagementID: string;
         emailAddress: string;
         password: string;
     };
     user: {
-    _id: string;
+    id: string;
     email: string;
     name: string;
     phoneNumber: string;
@@ -24,5 +26,6 @@ interface Request extends express.Request {
         createdAt: Date;
     }
 }
+
 
 export { Request };

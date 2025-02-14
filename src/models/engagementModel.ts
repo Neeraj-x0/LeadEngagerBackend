@@ -1,23 +1,19 @@
 import mongoose, { Document, Schema } from "mongoose";
 import { MessageModel } from "./MessageModel";
+import { IEngagement } from "../interfaces/IEngagement";
 
 // Define an interface for the Engagement document
-export interface IEngagement extends Document {
-  category: string;
-  status: string;
-  messages: mongoose.Types.ObjectId[];
-  timestamp: Date;
-  totalMessages: number;
-  replies: number;
-}
+
 // Define the Engagement schema
 const EngagementSchema = new Schema<IEngagement>({
+  name: String,
+  notes: String,
+  lastMessage: Date,
   category: {
     type: String,
     ref: "Category", // Reference to Category collection
     validate: {
       validator: async function (this: any, value: string): Promise<boolean> {
-        // Ensure that a Category with the given name exists
         const category = await mongoose
           .model("Category")
           .findOne({ name: value });
@@ -25,6 +21,10 @@ const EngagementSchema = new Schema<IEngagement>({
       },
       message: "Category must exist in CategoryModel",
     },
+  },
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
     required: true,
   },
 
@@ -39,7 +39,6 @@ const EngagementSchema = new Schema<IEngagement>({
       },
       message: "Status must exist in StatusModel",
     },
-    required: true,
   },
 
   messages: {

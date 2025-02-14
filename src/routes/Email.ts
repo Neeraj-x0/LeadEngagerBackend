@@ -41,9 +41,8 @@ router.post(
       email: req.user.email,
       name: req.user.name,
     });
-
     const sendResponse = await mailService.sendMail(
-      to,
+      [to],
       subject,
       body,
       data,

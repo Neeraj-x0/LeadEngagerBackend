@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-
+import { CategoryModel, StatusModel } from "./Settings";
 const leadModelSchema = new mongoose.Schema({
   id: {
     type: String,
@@ -19,13 +19,36 @@ const leadModelSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
   status: {
     type: String,
-    default: "NEW",
+    ref: StatusModel,
+    validate: {
+      validator: async function (this: any, value: string) {
+        const status = await mongoose.model("Status").findOne({
+          name: value,
+          user: this.user,
+        });
+        return status !== null;
+      },
+    },
   },
   category: {
     type: String,
-    default: "GENERAL",
+    ref: "Category", // Reference to Category collection
+    validate: {
+      validator: async function (this: any, value: string): Promise<boolean> {
+        const category = await mongoose
+          .model("Category")
+          .findOne({ name: value, user: this.user });
+        return category !== null;
+      },
+      message: "Category must exist in CategoryModel",
+    },
   },
   notes: String,
   createdAt: {

@@ -7,8 +7,12 @@ const categorySchema = new mongoose.Schema({
     unique: true,
   },
   description: String,
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true, 
+  },
 });
-
 
 const statusSchema = new mongoose.Schema({
   name: {
@@ -16,8 +20,13 @@ const statusSchema = new mongoose.Schema({
     required: true,
     unique: true,
   },
+  description: String,
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
 });
-
 
 export const StatusModel = mongoose.model("Status", statusSchema);
 export const CategoryModel = mongoose.model("Category", categorySchema);

@@ -1,198 +1,268 @@
 import FormData from "form-data";
-import Mailgun from "mailgun.js";
+import Mailgun, { MailgunMessageData } from "mailgun.js";
 import nodemailer from "nodemailer";
 import mongoose from "mongoose";
 import { AppError } from "./errorHandler";
 import { EmailModel } from "../models/EmailModel";
 import fileType from "file-type";
-import path from 'path';
 import { renderBody } from "./functions";
 
+// Define clear interfaces for better type safety
+interface UserData {
+  email: string;
+  name: string;
+}
 
-type SendMailResponse = {
+interface EmailAttachment {
+  buffer: Buffer;
+  size: number;
+  originalname: string;
+}
+
+interface SendMailResponse {
   id: string;
   message: string;
-};
+}
+
+interface EmailData {
+  to: string[];
+  from: mongoose.Types.ObjectId;
+  subject: string;
+  body: string;
+}
 
 class MailService {
-  private mg;
-  private domain: string;
-  private defaultFrom: string;
+  private readonly mg;
+  private readonly domain: string;
+  private readonly defaultFrom: string;
+  private readonly transporter;
+  private static readonly MAX_FILE_SIZE_MB = 25;
+  private static readonly EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  constructor(userData: { email: string; name: string }) {
+  constructor(userData: UserData) {
+    this.validateUserData(userData);
+    this.validateEnvironment();
+
+    const mailgun = new Mailgun(FormData);
+    this.mg = mailgun.client({
+      username: "api",
+      key: process.env.MAILGUN_API_KEY!
+    });
+
+    this.domain = "mail.neerajx0.xyz";
+    this.defaultFrom = `${userData.name} <${userData.email}>`;
+    this.transporter = this.createNodemailerTransport();
+  }
+
+  private validateUserData(userData: UserData): void {
     if (!userData?.email || !userData?.name) {
       throw new AppError("User data with valid email is required", 400);
     }
-
-    const MAILGUN_API_KEY = process.env.MAILGUN_API_KEY;
-    if (!MAILGUN_API_KEY) {
-      throw new AppError("Mailgun API key not found", 500);
-    }
-
-    const mailgun = new Mailgun(FormData);
-    this.mg = mailgun.client({ username: "api", key: MAILGUN_API_KEY });
-    this.domain = "mail.neerajx0.xyz";
-    this.defaultFrom = `${userData.name} <${userData.email}>`;
   }
 
+  private validateEnvironment(): void {
+    if (!process.env.MAILGUN_API_KEY) {
+      throw new AppError("Mailgun API key not found", 500);
+    }
+    if (!process.env.NODE_USER || !process.env.NODE_PASS) {
+      throw new AppError("Gmail credentials not found", 500);
+    }
+  }
 
+  private createNodemailerTransport() {
+    return nodemailer.createTransport({
+      service: "gmail",
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.NODE_USER,
+        pass: process.env.NODE_PASS
+      }
+    });
+  }
 
-private async sendViaMailgun(
-    email: string,
+  private validateFileSize(size: number): void {
+    const fileSizeInMB = size / (1024 * 1024);
+    if (fileSizeInMB > MailService.MAX_FILE_SIZE_MB) {
+      throw new AppError(`File size exceeds ${MailService.MAX_FILE_SIZE_MB}MB limit`, 400);
+    }
+  }
+
+  private async sendViaMailgun(
+    email: string[],
     subject: string,
     body: string,
     data: Record<string, any>,
     bodyType: "html" | "text",
-    fileBuffer?: Buffer
-): Promise<SendMailResponse> {
-    try {
-        const renderedBody = renderBody(body, data, bodyType);
-        const mailOptions: any = {
-            from: this.defaultFrom,
-            to: [email],
-            subject,
-            [bodyType]: renderedBody,
-            template: "",
-        };
-
-        // Handle file buffer if provided
-        if (fileBuffer) {
-            // Detect file type from buffer
-            const type = await fileType.fromBuffer(fileBuffer);
-            
-            if (!type) {
-                throw new AppError("Unable to determine file type", 400);
-            }
-
-            // Extract filename from subject or generate one
-            let filename = subject.trim();
-            
-            // Clean the filename of invalid characters
-            filename = filename
-                .replace(/[^a-zA-Z0-9-_\s.]/g, '') // Remove invalid chars
-                .replace(/\s+/g, '_')              // Replace spaces with underscore
-                .trim();
-
-            // If filename is empty after cleaning, generate a default one
-            if (!filename) {
-                const timestamp = new Date().toISOString()
-                    .replace(/[:.]/g, '-')
-                    .replace('T', '_')
-                    .slice(0, -5);
-                filename = `attachment_${timestamp}`;
-            }
-
-            // Add extension if not present
-            if (!filename.endsWith(`.${type.ext}`)) {
-                filename = `${filename}.${type.ext}`;
-            }
-
-            mailOptions.attachment = {
-                data: fileBuffer,
-                filename: filename,
-                contentType: type.mime,
-            };
-
-            // Check file size (25MB limit)
-            const fileSizeInMB = fileBuffer.length / (1024 * 1024);
-            if (fileSizeInMB > 25) {
-                throw new AppError("File size exceeds 25MB limit", 400);
-            }
-        }
-
-        const response = await this.mg.messages.create(this.domain, mailOptions);
-        return { id: response.id || "", message: response.message || "" };
-    } catch (error) {
-        throw new AppError(
-            `Mailgun Error: ${
-                error instanceof Error ? error.message : String(error)
-            }`,
-            500
-        );
-    }
-}
-
-  private async sendViaGmail(
-    email: string,
-    subject: string,
-    body: string,
-    data: Record<string, any>,
-    bodyType: "html" | "text"
+    file?: EmailAttachment
   ): Promise<SendMailResponse> {
     try {
-      const renderedBody = renderBody(body, data, bodyType);
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        host: "smtp.gmail.com",
-        port: 587,
-        secure: false,
-        auth: { user: process.env.NODE_USER, pass: process.env.NODE_PASS },
-      });
 
-      const mailOptions = {
-        from: `Razominer <${process.env.NODE_USER}>`,
+      const mailOptions: Record<string, any> = {
+        from: this.defaultFrom,
         to: email,
         subject,
-        [bodyType]: renderedBody,
+        [bodyType]: renderBody(body, data, bodyType)
       };
 
-      const response = await transporter.sendMail(mailOptions);
-      return { id: response.messageId || "", message: "Email sent via Gmail" };
+      let attachmentData: Buffer;
+      if (file && Buffer.isBuffer(file.buffer)) {
+        attachmentData = file.buffer;
+      } else if (file && file.buffer) {
+        attachmentData = Buffer.from(file.buffer);
+      } else {
+        throw new AppError("Invalid file buffer", 400);
+      }
+
+      if (file) {
+        this.validateFileSize(file.size);
+        const messageData = {
+          ...mailOptions,
+          attachment: {
+            data: attachmentData,
+            filename: file.originalname
+          },
+          template: ""
+        };
+
+        const response = await this.mg.messages.create(this.domain, messageData);
+        return { id: response.id || "", message: response.message || "" };
+      }
+
+      const response = await this.mg.messages.create(this.domain, mailOptions as MailgunMessageData);
+      return { id: response.id || "", message: response.message || "" };
     } catch (error) {
       throw new AppError(
-        `Gmail Error: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `Mailgun Error: ${error instanceof Error ? error.message : String(error)}`,
         500
       );
     }
   }
 
+  private async sendViaGmail(
+    email: string[],
+    subject: string,
+    body: string,
+    data: Record<string, any>,
+    bodyType: "html" | "text",
+    fileBuffer?: Buffer
+  ): Promise<SendMailResponse> {
+    try {
+      const mailOptions: Record<string, any> = {
+        from: `Razominer <${process.env.NODE_USER}>`,
+        to: email.join(","),
+        subject,
+        [bodyType]: renderBody(body, data, bodyType)
+      };
+
+      if (fileBuffer) {
+        const attachment = await this.processFileAttachment(fileBuffer, subject);
+        if (attachment) {
+          mailOptions.attachments = [attachment];
+        }
+      }
+
+      const response = await this.transporter.sendMail(mailOptions);
+      return { id: response.messageId || "", message: "Email sent via Gmail" };
+    } catch (error) {
+      throw new AppError(
+        `Gmail Error: ${error instanceof Error ? error.message : String(error)}`,
+        500
+      );
+    }
+  }
+
+  private async processFileAttachment(fileBuffer: Buffer, subject: string) {
+    const type = await fileType.fromBuffer(fileBuffer);
+    if (!type) {
+      throw new AppError("Unable to determine file type", 400);
+    }
+
+    this.validateFileSize(fileBuffer.length);
+
+    const filename = this.generateFilename(subject, type.ext);
+    return {
+      filename,
+      data: Buffer.from(fileBuffer)
+    };
+  }
+
+  private generateFilename(subject: string, extension: string): string {
+    let filename = subject
+      .trim()
+      .replace(/[^a-zA-Z0-9-_\s.]/g, "")
+      .replace(/\s+/g, "_")
+      .trim();
+
+    if (!filename) {
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, "-")
+        .replace("T", "_")
+        .slice(0, -5);
+      filename = `attachment_${timestamp}`;
+    }
+
+    return filename.endsWith(`.${extension}`) ? filename : `${filename}.${extension}`;
+  }
+
   async sendMail(
-    email: string,
+    email: string[],
     subject: string,
     body: string,
     data: Record<string, any>,
     type: "mailgun" | "gmail" = "mailgun",
-    bodyType: "html" | "text" = "html"
+    bodyType: "html" | "text" = "html",
+    file?: EmailAttachment
   ): Promise<SendMailResponse> {
     return type === "gmail"
-      ? this.sendViaGmail(email, subject, body, data, bodyType)
-      : this.sendViaMailgun(email, subject, body, data, bodyType);
+      ? this.sendViaGmail(email, subject, body, data, bodyType, file?.buffer)
+      : this.sendViaMailgun(email, subject, body, data, bodyType, file);
   }
 
-  async CreateEmail(data: {
-    to: string;
-    from: mongoose.Types.ObjectId;
-    subject: string;
-    body: string;
-  }) {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.to))
-      throw new AppError("Invalid email format", 400);
-    if (!mongoose.Types.ObjectId.isValid(data.from))
-      throw new AppError("Invalid sender ID", 400);
-    if (data.subject.length > 255) throw new AppError("Subject too long", 400);
+  async CreateEmail(data: EmailData) {
+    this.validateEmailData(data);
 
-    const newEmail = new EmailModel({ ...data, sentAt: new Date() });
-    await newEmail.save();
+    const emailsToSave = data.to.map((toEmail) => ({
+      ...data,
+      to: toEmail,
+      user: data.from,
+      sentAt: new Date()
+    }));
+
+    const newEmails = await EmailModel.insertMany(emailsToSave);
     return {
       success: true,
-      message: "Email created successfully",
-      data: newEmail,
+      message: "Emails created successfully",
+      data: newEmails
     };
   }
 
-  async DeleteEmail(id: string) {
-    if (!mongoose.Types.ObjectId.isValid(id))
-      throw new AppError("Invalid email ID", 400);
-    const email = await EmailModel.findById(id);
-    if (!email) throw new AppError("Email not found", 404);
+  private validateEmailData(data: EmailData): void {
+    if (!data.to.every((email) => MailService.EMAIL_REGEX.test(email))) {
+      throw new AppError("Invalid email format", 400);
+    }
+    if (!mongoose.Types.ObjectId.isValid(data.from)) {
+      throw new AppError("Invalid sender ID", 400);
+    }
+    if (data.subject.length > 255) {
+      throw new AppError("Subject too long", 400);
+    }
+  }
 
-    await EmailModel.findByIdAndDelete(id);
+  async DeleteEmail(id: string) {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new AppError("Invalid email ID", 400);
+    }
+
+    const email = await EmailModel.findByIdAndDelete(id);
+    if (!email) {
+      throw new AppError("Email not found", 404);
+    }
+
     return { success: true, message: "Email deleted successfully" };
   }
 }
 
 export default MailService;
-
-

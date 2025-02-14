@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import jwt, { JwtPayload } from "jsonwebtoken";
+import { JwtPayload } from "jsonwebtoken";
 import { AppError } from "../utils/errorHandler";
 import dotenv from "dotenv";
 import { getLeadById } from "../database/leads";
@@ -10,18 +10,18 @@ interface CustomRequest extends Request {
   lead?: Object;
 }
 
-export const validateJWT = (
+export const fetchClient = (
   req: CustomRequest,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ) => {
-  const { clientId } = req.body;
-
+  const { clientId } = req.body || {};
   try {
-    if (!clientId) {
+    if (!clientId || !req.user) {
       return next();
     }
-    const lead = getLeadById(clientId);
+    const lead = getLeadById(clientId, (req.user as JwtPayload).id);
+    console.log("lead", lead);
     if (!lead) {
       return next(new AppError("Unauthorized: Invalid token", 401));
     }

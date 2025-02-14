@@ -18,10 +18,6 @@ const supportedMimeTypes = {
 export const WhatsAppvalidators = {
   // Previous validators remain unchanged...
   textMessage: Joi.object({
-    phone: Joi.string().pattern(phoneRegex).required().messages({
-      "string.pattern.base": "Phone number must be between 10 and 12 digits",
-      "any.required": "Phone number is required",
-    }),
     message: Joi.string().required().min(1).max(4096).messages({
       "string.min": "Message cannot be empty",
       "string.max": "Message cannot exceed 4096 characters",
@@ -37,57 +33,25 @@ export const WhatsAppvalidators = {
   }),
   // New unified media validation
   media: Joi.object({
-    // Basic requirements
-    phone: Joi.string().pattern(phoneRegex).required().messages({
-      "string.pattern.base": "Phone number must be between 10 and 12 digits",
-      "any.required": "Phone number is required",
-    }),
-
     // Media type specification
     mediaType: Joi.string()
-      .valid("image", "video", "audio", "document")
+      .valid("image", "video", "audio", "document", "sticker")
       .required()
       .messages({
         "any.only": "Media type must be one of: image, video, audio, document",
         "any.required": "Media type is required",
       }),
 
-    // File validation
-    file: Joi.object({
-      fieldname: Joi.string().required(),
-      originalname: Joi.string().required(),
-      encoding: Joi.string().required(),
-      mimetype: Joi.string()
-        .custom((value, helpers) => {
-          const mediaType = helpers.state.ancestors[0].mediaType as
-            | "image"
-            | "video"
-            | "audio"
-            | "document";
-          if (!supportedMimeTypes[mediaType]?.includes(value)) {
-            return helpers.error("any.invalid", {
-              message: `Invalid file type for ${mediaType}. Supported types: ${supportedMimeTypes[
-                mediaType
-              ]?.join(", ")}`,
-            });
-          }
-          return value;
-        })
-        .required(),
-      size: Joi.number()
-        .max(maxFileSize)
-        .required()
-        .messages({
-          "number.max": `File size cannot exceed ${
-            maxFileSize / (1024 * 1024)
-          }MB`,
-        }),
-      buffer: Joi.binary().required(),
-    }).required(),
+    mime: Joi.string().required().messages({
+      "any.required": "Mime is required",
+    }),
 
     // Optional parameters
     caption: Joi.string().max(1024).optional().messages({
       "string.max": "Caption cannot exceed 1024 characters",
+    }),
+    fileName: Joi.string().max(255).optional().messages({
+      "string.max": "fileName cannot exceed 255 characters",
     }),
 
     // Media-specific options
@@ -105,7 +69,7 @@ export const WhatsAppvalidators = {
       }),
 
       // Document specific
-      filename: Joi.when("mediaType", {
+      fileName: Joi.when("mediaType", {
         is: "document",
         then: Joi.string().max(255).optional(),
       }),

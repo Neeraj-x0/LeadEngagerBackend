@@ -49,8 +49,12 @@ export interface ContactRequest extends WhatsAppBaseRequest {
 
 export interface MediaRequest extends WhatsAppBaseRequest {
   body: {
+    mediaType: "image" | "video" | "audio" | "sticker" | "document";
     caption?: string;
     viewOnce?: boolean;
+    type?: string;
+    fileName?: string;
+    mimetype?: string;
   };
 }
 
@@ -90,13 +94,6 @@ export type WhatsAppMiddleware = (
 ) => void | Promise<void>;
 
 // Socket type
-export interface WhatsAppSocket {
-  sendMessage: (jid: string, content: any) => Promise<any>;
-  ev: {
-    on: (event: string, callback: (data: any) => void) => void;
-  };
-  relayMessage?: (jid: string, message: any, options: any) => Promise<any>;
-}
 
 // Extend existing types to support buffer
 export interface MediaContent {
@@ -105,16 +102,23 @@ export interface MediaContent {
 }
 
 export interface MediaOptions {
+  fileName?: string;
   caption?: string;
   viewOnce?: boolean;
   packname?: string;
+  mimetype?: string;
   author?: string;
+  
 }
 
 export interface MediaRequest extends WhatsAppBaseRequest {
   body: {
     caption?: string;
     viewOnce?: boolean;
+    mediaType: "image" | "video" | "audio" | "sticker" | "document";
+    type?: string;
+    fileName?: string;
+    mimetype?: string;
   };
   file?: Express.Multer.File;
 }
@@ -125,8 +129,10 @@ export interface WhatsAppMessageContent {
   video?: MediaContent;
   audio?: MediaContent;
   sticker?: MediaContent;
+  document?: MediaContent;
   caption?: string;
   viewOnce?: boolean;
+  fileName?: string;
   mimetype?: string;
 }
 

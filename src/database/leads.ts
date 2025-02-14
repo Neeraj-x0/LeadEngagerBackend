@@ -3,25 +3,26 @@ import { CategoryModel } from "../models/Settings";
 import { AppError } from "../utils/errorHandler";
 import crypto from "crypto";
 
-async function createLead(lead: any) {
+async function createLead(lead: any, user: string) {
   try {
+    
     // Generate a unique 6-digit ID based on user data
     let id = generateUniqueId(lead);
 
     // Check if the generated ID already exists in the database
-    let leadExists = await LeadModel.findOne({ id: id });
+    let leadExists = await LeadModel.findOne({ id: id, user });
 
     // If the lead with this ID already exists, regenerate the ID
     while (leadExists) {
       id = generateUniqueId(lead); // Generate a new ID
-      leadExists = await LeadModel.findOne({ id: id }); // Check again
+      leadExists = await LeadModel.findOne({ id: id, user }); // Check again
     }
 
     // Assign the unique ID to the lead object
     lead.id = id;
 
     // Create a new lead with the unique ID
-    const newLead = new LeadModel(lead);
+    const newLead = new LeadModel({ ...lead, user });
     await newLead.save();
     return newLead;
   } catch (error) {
@@ -40,9 +41,9 @@ function generateUniqueId(lead: any): string {
   const id = (parseInt(hash.slice(0, 6), 16) % 900000) + 100000; // Ensure ID is between 100000 and 999999
   return id.toString();
 }
-async function getLeads() {
+async function getLeads(id: string) {
   try {
-    return await LeadModel.find();
+    return await LeadModel.find({ user: id });
   } catch (error) {
     if (error instanceof Error) {
       throw new AppError(error.message, 400);
@@ -65,9 +66,9 @@ async function deleteAll() {
   }
 }
 
-async function getLeadById(id: string) {
+async function getLeadById(id: string, user: string) {
   try {
-    const lead = await LeadModel.findOne({ id });
+    const lead = await LeadModel.findOne({ id, user });
     if (lead) {
       return lead;
     } else {
@@ -82,14 +83,14 @@ async function getLeadById(id: string) {
   }
 }
 
-async function updateCategory(id: string, category: string) {
+async function updateCategory(id: string, category: string, user: string) {
   try {
     // const categoryExists = await CategoryModel.exists({ name: category });
     // if (!categoryExists) {
     //   throw new AppError("Category not found", 404);
     // }
 
-    await LeadModel.findOneAndUpdate({ id }, { category });
+    await LeadModel.findOneAndUpdate({ id, user }, { category });
     return { message: "Category updated successfully" };
   } catch (error) {
     if (error instanceof Error) {
@@ -100,9 +101,9 @@ async function updateCategory(id: string, category: string) {
   }
 }
 
-async function updateStatus(id: string, status: string) {
+async function updateStatus(id: string, status: string, user: string) {
   try {
-    await LeadModel.findOneAndUpdate({ id }, { status });
+    await LeadModel.findOneAndUpdate({ id, user }, { status });
     return { message: "Status updated successfully" };
   } catch (error) {
     if (error instanceof Error) {
@@ -113,9 +114,9 @@ async function updateStatus(id: string, status: string) {
   }
 }
 
-async function deleteLead(id: string) {
+async function deleteLead(id: string, user: string) {
   try {
-    await LeadModel.findOneAndDelete({ id });
+    await LeadModel.findOneAndDelete({ id, user });
     return { message: "Lead deleted successfully" };
   } catch (error) {
     if (error instanceof Error) {
@@ -135,9 +136,9 @@ interface updateLeadBody {
   status: string;
 }
 
-async function getLeadsByCategory(category: string) {
+async function getLeadsByCategory(category: string, user: string) {
   try {
-    return await LeadModel.find({ category });
+    return await LeadModel.find({ category, user });
   } catch (error) {
     if (error instanceof Error) {
       throw new AppError(error.message, 400);
@@ -147,9 +148,18 @@ async function getLeadsByCategory(category: string) {
   }
 }
 
-async function getLeadsByCategoryStatus(category?: string, status?: string) {
+async function getLeadsByCategoryStatus(
+  user: string,
+  category?: string,
+  status?: string
+) {
   try {
-    let query = {};
+    interface QueryType {
+      user: string;
+      category?: string;
+      status?: string;
+    }
+    let query: QueryType = { user };
     if (category) query = { ...query, category };
     if (status) query = { ...query, status };
     return await LeadModel.find(query);
@@ -162,9 +172,9 @@ async function getLeadsByCategoryStatus(category?: string, status?: string) {
   }
 }
 
-async function bulkDeleteLeads(idArray: string[]) {
+async function bulkDeleteLeads(idArray: string[], user: string) {
   try {
-    await LeadModel.deleteMany({ id: { $in: idArray } });
+    await LeadModel.deleteMany({ id: { $in: idArray }, user });
     return { message: "Leads deleted successfully" };
   } catch (error) {
     if (error instanceof Error) {

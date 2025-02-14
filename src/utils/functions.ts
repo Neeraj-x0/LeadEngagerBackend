@@ -1,10 +1,10 @@
 import { createLead } from "../database/leads";
 import * as XLSX from "xlsx";
 import csv from "csv-parse/sync";
-import { AppError } from "./errorHandler";
 import jwt from "jsonwebtoken";
-
-interface LeadData {
+import { AppError } from "./errorHandler";
+import moment from "moment-timezone";
+export interface LeadData {
   Name: string;
   Phone: string;
   Email: string;
@@ -12,16 +12,16 @@ interface LeadData {
   Category?: string;
 }
 
-interface WorkerResult {
+export interface ImportResult {
   imported: number;
-  errors: Array<{
-    lead: LeadData;
-    error: string;
-  }>;
+  errors: Array<{ lead: LeadData; error: string }>;
 }
 
 const REQUIRED_FIELDS = ["Name", "Phone", "Email"];
 
+/**
+ * Validate that each lead has required fields.
+ */
 function validateLeads(leads: LeadData[]): void {
   const errors: string[] = [];
 
@@ -42,174 +42,180 @@ function validateLeads(leads: LeadData[]): void {
   }
 }
 
-export async function importLeadsFromBuffer(
-  fileBuffer: Buffer,
-  fileType: string,
-  category: string
-): Promise<{
-  totalImported: number;
-  errors: Array<{ lead: LeadData; error: string }>;
-}> {
-  try {
-    let leads: LeadData[];
-
-    if (fileType === "csv") {
-      leads = parseCSVBuffer(fileBuffer);
-    } else if (fileType === "xlsx" || fileType === "xls") {
-      leads = parseExcelBuffer(fileBuffer);
-    } else {
-      throw new AppError(`Unsupported file type: ${fileType}`, 400);
-    }
-
-    if (!leads?.length) {
-      throw new AppError("No leads found in file", 400);
-    }
-
-    validateLeads(leads);
-    return await processLeadsInParallel(leads, category);
-  } catch (error) {
-    if (error instanceof AppError) {
-      throw error;
-    }
-    if (error instanceof Error) {
-      throw new AppError(`Import failed: ${error.message}`, 400);
-    } else {
-      throw new AppError("Import failed: Unknown error", 400);
-    }
-  }
-}
-
+/**
+ * Parse CSV buffer into an array of leads.
+ */
 function parseCSVBuffer(buffer: Buffer): LeadData[] {
   try {
     return csv.parse(buffer, {
       columns: true,
       skip_empty_lines: true,
     });
-  } catch (error) {
-    if (error instanceof Error) {
-      throw new AppError(`CSV parsing failed: ${error.message}`, 400);
-    } else {
-      throw new AppError("CSV parsing failed: Unknown error", 400);
-    }
+  } catch (error: any) {
+    throw new AppError(
+      `CSV parsing failed: ${error.message || "Unknown error"}`,
+      400
+    );
   }
 }
 
+/**
+ * Parse Excel buffer into an array of leads.
+ */
 function parseExcelBuffer(buffer: Buffer): LeadData[] {
   try {
     const workbook = XLSX.read(buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     return XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]) as LeadData[];
-  } catch (error) {
-    if (error instanceof Error) {
-      throw new AppError(`Excel parsing failed: ${error.message}`, 400);
-    } else {
-      throw new AppError("Excel parsing failed: Unknown error", 400);
-    }
+  } catch (error: any) {
+    throw new AppError(
+      `Excel parsing failed: ${error.message || "Unknown error"}`,
+      400
+    );
   }
 }
 
-// Process all leads in parallel using Promise.allSettled 
-async function processLeadsInParallel(
+/**
+ * Process leads concurrently using limited parallelism.
+ *
+ * Here we use a concurrency limiter that avoids overwhelming the system.
+ * This is a purely asynchronous solution (without worker_threads) that batches lead creation.
+ */
+async function processLeadsConcurrently(
   leads: LeadData[],
-  category: string
-): Promise<{
-  totalImported: number;
-  errors: { lead: LeadData; error: string }[];
-}> {
-  const promises = leads.map(async (lead) => {
-    let cat;
-    if (lead.Category) {
-      cat = lead.Category;
-    } else {
-      cat = category;
-    }
-    console.log(cat);
+  defaultCategory: string,
+  user: string,
+  concurrency: number = 50
+): Promise<ImportResult> {
+  let totalImported = 0;
+  const errors: Array<{ lead: LeadData; error: string }> = [];
+
+  // This function wraps createLead, ensuring that any error is caught.
+  const processLead = async (lead: LeadData): Promise<void> => {
+    const category = lead.Category || defaultCategory;
     try {
-      await createLead({
-        name: lead.Name,
-        phone: lead.Phone,
-        email: lead.Email,
-        notes: lead.Note,
-        category: cat,
-      });
-      return { success: true, lead };
-    } catch (error) {
-      return {
-        success: false,
+      await createLead(
+        {
+          name: lead.Name,
+          phone: lead.Phone,
+          email: lead.Email,
+          notes: lead.Note,
+          category,
+        },
+        user
+      );
+      totalImported++;
+    } catch (error: any) {
+      errors.push({
         lead,
         error:
           error instanceof Error ? error.message : "Unknown error occurred",
-      };
+      });
     }
-  });
+  };
 
-  // Wait for all promises to settle
-  const results = await Promise.allSettled(promises);
+  // Create an array of tasks
+  const tasks = leads.map((lead) => processLead(lead));
 
-  let totalImported = 0;
-  const allErrors: { lead: LeadData; error: string }[] = [];
+  // Process tasks in batches with defined concurrency limit
+  for (let i = 0; i < tasks.length; i += concurrency) {
+    const batch = tasks.slice(i, i + concurrency);
+    await Promise.all(batch);
+  }
 
-  results.forEach((result) => {
-    if (result.status === "fulfilled") {
-      if (result.value.success) {
-        totalImported++;
-      } else {
-        allErrors.push({
-          lead: result.value.lead,
-          error: result.value.error ?? "Unknown error",
-        });
-      }
-    } else {
-      // In case the promise was rejected (should not happen with our catch block above)
-      allErrors.push({ lead: {} as LeadData, error: result.reason });
-    }
-  });
-
-  return { totalImported, errors: allErrors };
+  return { imported: totalImported, errors };
 }
 
+/**
+ * Main function: Import leads from file buffer and process them.
+ */
+export async function importLeadsFromBuffer(
+  fileBuffer: Buffer,
+  fileType: string,
+  defaultCategory: string,
+  user: string
+): Promise<ImportResult> {
+  let leads: LeadData[];
+
+  if (fileType === "csv") {
+    leads = parseCSVBuffer(fileBuffer);
+  } else if (fileType === "xlsx" || fileType === "xls") {
+    leads = parseExcelBuffer(fileBuffer);
+  } else {
+    throw new AppError(`Unsupported file type: ${fileType}`, 400);
+  }
+
+  if (!leads.length) {
+    throw new AppError("No leads found in file", 400);
+  }
+
+  validateLeads(leads);
+  return await processLeadsConcurrently(leads, defaultCategory, user);
+}
+
+/**
+ * Process and report the import.
+ */
 export async function processImport(
   buffer: Buffer,
   type: string,
-  category: string
+  defaultCategory: string,
+  user: string
 ) {
   try {
-    const result = await importLeadsFromBuffer(buffer, type, category);
-
+    const result = await importLeadsFromBuffer(
+      buffer,
+      type,
+      defaultCategory,
+      user
+    );
     if (result.errors.length > 0) {
-      // Log errors but continue if some leads were successfully imported
       console.error("Import completed with errors:", result.errors);
     }
 
     return {
-      success: true,
-      imported: result.totalImported,
+      success: result.errors.length === 0,
+      imported: result.imported,
       errors: result.errors,
       message:
         result.errors.length > 0
-          ? `Imported ${result.totalImported} leads with ${result.errors.length} errors`
-          : `Successfully imported ${result.totalImported} leads`,
+          ? `Imported ${result.imported} leads with ${result.errors.length} errors`
+          : `Successfully imported ${result.imported} leads`,
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Import error:", error);
-    throw error instanceof AppError
-      ? error
-      : new AppError("Import failed: " + (error as Error).message, 400);
+    const errorMsg =
+      error instanceof Error
+        ? `Import failed: ${error.message}`
+        : "Import failed: Unknown error";
+    return {
+      success: false,
+      imported: 0,
+      errors: [{ lead: {} as LeadData, error: errorMsg }],
+      message: errorMsg,
+    };
   }
 }
 
-
-export const generateToken = (user: object): string => {
+/**
+ * Generate a JWT token for a user object.
+ */
+export const generateToken = (user: Record<string, any>): string => {
   return jwt.sign({ ...user }, process.env.JWT_SECRET as string, {
-    expiresIn: "30d", // 30 days
+    expiresIn: "30d",
   });
 };
 
+/**
+ * Clean a phone number by removing non-digit characters.
+ */
 export const validatePhone = (phone: string): string => {
-  const cleanPhone = phone.replace(/\D/g, "");
-  return cleanPhone;
+  return phone.replace(/\D/g, "");
 };
 
+/**
+ * Render a body template by replacing data placeholders.
+ */
 export const renderBody = (
   body: string,
   data: Record<string, any>,
@@ -217,8 +223,39 @@ export const renderBody = (
 ): string => {
   let rendered = body;
   for (const key in data) {
-    const pattern = new RegExp(`{{\s*${key}\s*}}`, "g");
+    const pattern = new RegExp(`{{\\s*${key}\\s*}}`, "g");
     rendered = rendered.replace(pattern, data[key]);
   }
   return bodyType === "text" ? rendered.replace(/<[^>]+>/g, "") : rendered;
-}
+};
+
+/**
+ * Recursively parse an object, cleaning empty values.
+ */
+export const parseBody = (obj: any): any => {
+  if (obj === null || obj === undefined) return undefined;
+  if (typeof obj !== "object") return obj === "" ? undefined : obj;
+  if (Array.isArray(obj)) {
+    const cleanedArray = obj
+      .map(parseBody)
+      .filter((item) => item !== undefined);
+    return cleanedArray.length ? cleanedArray : undefined;
+  }
+  const cleanedObj: Record<string, any> = {};
+  let hasValidProperties = false;
+  for (const [key, value] of Object.entries(obj)) {
+    const cleanedValue = parseBody(value);
+    if (cleanedValue !== undefined) {
+      cleanedObj[key] = cleanedValue;
+      hasValidProperties = true;
+    }
+  }
+  return hasValidProperties ? cleanedObj : undefined;
+};
+
+export const convertToTimezone = (
+  date: Date,
+  timezone: string = "Asia/Kolkata"
+): string => {
+  return moment.utc(date).tz(timezone).format("YYYY-MM-DD HH:mm:ss Z");
+};

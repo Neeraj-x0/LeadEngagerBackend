@@ -20,10 +20,11 @@ router.post(
   validate(WhatsAppvalidators.textMessage),
   catchAsync(
     async (req: TextMessageRequest, res: Response<WhatsAppResponse>) => {
+      console.log("req.body", req.body);
       const { message } = req.body;
       const { phone } = req.lead;
       const jid = `${validatePhone(phone)}@s.whatsapp.net`;
-      await messageHandler.sendMessage(jid, message, {}, "text");
+      await messageHandler.sendMessage(jid, message, {});
       res.json({ success: true, message: "Text message sent successfully" });
     }
   )
@@ -31,12 +32,11 @@ router.post(
 
 // Route for sending media (images, videos, audio)
 router.post(
-  "/:mediaType(image|video|audio)",
+  "/:mediaType(image|video|audio|document)",
   validate(WhatsAppvalidators.media),
   catchAsync(async (req: MediaRequest, res: Response<WhatsAppResponse>) => {
-    const { caption, viewOnce } = req.body;
+    const { caption, mediaType, fileName, type } = req.body;
     const { phone } = req.lead;
-    const { mediaType } = req.params;
     const jid = `${validatePhone(phone)}@s.whatsapp.net`;
 
     const content = req.file?.buffer;
@@ -47,8 +47,7 @@ router.post(
     await messageHandler.sendMessage(
       jid,
       content,
-      { caption, viewOnce },
-      mediaType as any
+      { caption: caption || "", fileName: fileName || "file", mimetype: type },
     );
 
     res.json({ success: true, message: `${mediaType} sent successfully` });
@@ -67,8 +66,7 @@ router.post(
     if (!content) {
       throw new AppError("No sticker content provided", 400);
     }
-
-    await messageHandler.sendMessage(jid, content, {}, "sticker");
+    await messageHandler.sendMessage(jid, content, {});
     res.json({ success: true, message: "Sticker sent successfully" });
   })
 );

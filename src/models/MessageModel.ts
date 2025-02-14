@@ -1,12 +1,15 @@
 import mongoose from "mongoose";
-import { CategoryModel, StatusModel } from "./Settings";
 
 const messageSchema = new mongoose.Schema({
   content: {
     type: Object,
     required: true,
   },
-  sender: {
+  key: {
+    type: Object,
+    required: true,
+  },
+  type: {
     type: String,
     required: true,
   },
@@ -14,36 +17,27 @@ const messageSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  category: {
-    type: String,
-    ref: CategoryModel,
-    validate: {
-      validator: async function (value: string) {
-        const category = await mongoose
-          .model("Category")
-          .findOne({ name: value });
-        return category !== null;
-      },
-      message: "Category must exist in CategoryModel",
-    },
-  },
-
-  status: {
-    type: String,
-    ref: StatusModel,
-    validate: {
-      validator: async function (value: string) {
-        const status = await mongoose.model("Status").findOne({ name: value });
-        return status !== null;
-      },
-      message: "Status must exist in StatusModel",
-    },
+  leadId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Lead",
   },
   engagementID: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Engagement",
   },
-
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
+  reminder: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Reminder",
+  },
+  messageSent: {
+    type: Boolean,
+    default: true,
+  },
   timestamp: {
     type: Date,
     default: Date.now,
@@ -52,4 +46,4 @@ const messageSchema = new mongoose.Schema({
 
 const MessageModel = mongoose.model("Message", messageSchema);
 
-export  {MessageModel};
+export { MessageModel };

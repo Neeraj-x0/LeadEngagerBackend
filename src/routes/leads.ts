@@ -1,4 +1,5 @@
-import { Router, Request, Response } from "express";
+import { Router, Response } from "express";
+import { Request } from "../types";
 import {
   bulkDeleteLeads,
   createLead,
@@ -10,14 +11,15 @@ import {
   updateStatus,
 } from "../database/leads";
 import { catchAsync } from "../utils/errorHandler";
-import {processImport} from "../utils/functions";
+import { parseBody, processImport } from "../utils/functions";
 
 const router = Router();
 
 router.get(
   "/",
   catchAsync(async (req: Request, res: Response) => {
-    const leads = await getLeads();
+    const { id } = req.user;
+    const leads = await getLeads(id);
     res.json({ data: leads });
   })
 );
@@ -25,7 +27,7 @@ router.get(
 router.get(
   "/:id",
   catchAsync(async (req: Request, res: Response) => {
-    const lead = await getLeadById(req.params.id);
+    const lead = await getLeadById(req.params.id, req.user.id);
     res.json(lead);
   })
 );
@@ -33,7 +35,8 @@ router.get(
 router.post(
   "/",
   catchAsync(async (req: Request, res: Response) => {
-    const lead = await createLead(req.body);
+    const body = parseBody(req.body);
+    const lead = await createLead(body, req.user.id);
     res.json(lead);
   })
 );
@@ -45,7 +48,8 @@ router.post(
     if (!fileBuffer) {
       throw new Error("No file uploaded");
     }
-    let category = req.body.category;
+    let body = parseBody(req.body);
+    let category = body.category;
     let ext = req.file?.originalname.split(".").pop();
     if (!ext) {
       throw new Error("File type not supported");
@@ -53,7 +57,8 @@ router.post(
     let import_status = await processImport(
       fileBuffer as Buffer,
       ext,
-      category
+      category,
+      req.user.id
     );
     console.log(import_status);
     res.json(import_status);
@@ -64,7 +69,7 @@ router.delete(
   "/bulk-delete",
   catchAsync(async (req: Request, res: Response) => {
     const { id } = req.body;
-    const result = await bulkDeleteLeads(id);
+    const result = await bulkDeleteLeads(id, req.user.id);
     res.json(result);
   })
 );
@@ -75,10 +80,10 @@ router.put(
     const { id, category, status } = req.body;
     id.forEach(async (element: string) => {
       if (category) {
-        await updateCategory(element, category);
+        await updateCategory(element, category, req.user.id);
       }
       if (status) {
-        await updateStatus(element, status);
+        await updateStatus(element, status, req.user.id);
       }
     });
     res.json({ message: "Bulk update successful" });
@@ -90,9 +95,9 @@ router.put(
   catchAsync(async (req: Request, res: Response) => {
     const { category, status } = req.body;
     if (category) {
-      const lead = await updateCategory(req.params.id, category);
+      const lead = await updateCategory(req.params.id, category, req.user.id);
     } else if (status) {
-      const lead = await updateStatus(req.params.id, status);
+      const lead = await updateStatus(req.params.id, status, req.user.id);
     }
     res.json({ message: "Lead updated successfully" });
   })
@@ -101,7 +106,7 @@ router.put(
 router.delete(
   "/:id",
   catchAsync(async (req: Request, res: Response) => {
-    const lead = await deleteLead(req.params.id);
+    const lead = await deleteLead(req.params.id, req.user.id);
     res.json(lead);
   })
 );

@@ -1,7 +1,6 @@
 import {
-  createEngagementMessageSchema,
-  createCampaignSchema,
-  createReminderSchema,
+  createEngagementSchema,
+ 
 } from "./engagementValidation";
 import {WhatsAppvalidators} from "./whatsApp";
 import { userValidationSchema } from "./userValidation";
@@ -17,9 +16,7 @@ export const statusUpdateValidationSchema = Joi.object({
 });
 
 export {
-  createEngagementMessageSchema,
-  createCampaignSchema,
-  createReminderSchema,
+ createEngagementSchema,
   userValidationSchema,
     WhatsAppvalidators,
 };

@@ -5,7 +5,10 @@ import { CategoryModel, StatusModel } from "../models/Settings";
 import { UserModel } from "../models/UserModel";
 import { catchAsync } from "../utils/errorHandler";
 import { validate } from "../middlewares/validationMiddleware";
-import { statusValidationSchema,statusUpdateValidationSchema } from "../validation";
+import {
+  statusValidationSchema,
+  statusUpdateValidationSchema,
+} from "../validation";
 import { LeadModel } from "../models/LeadModel";
 
 const router = Router();
@@ -13,8 +16,8 @@ const router = Router();
 router.get(
   "/",
   catchAsync(async (req: Request, res: Response) => {
-    const categoriesData = await CategoryModel.find();
-    const statusData = await StatusModel.find();
+    const categoriesData = await CategoryModel.find({ user: req.user.id });
+    const statusData = await StatusModel.find({ user: req.user.id });
     let statuses = statusData.map((status) => status.name);
     let categories = categoriesData.map((category) => category.name);
     let user = await UserModel.findOne({ email: req.user.email });
@@ -36,11 +39,32 @@ router.get(
   })
 );
 
+router.get(
+  "/categories",
+  catchAsync(async (req: Request, res: Response) => {
+    const categoriesData = await CategoryModel.find({ user: req.user.id });
+    let categories = categoriesData.map((category) => category.name);
+    res.json({ categories });
+  })
+);
+
+router.get(
+  "/statuses",
+  catchAsync(async (req: Request, res: Response) => {
+    const statusData = await StatusModel.find({ user: req.user.id });
+    let statuses = statusData.map((status) => status.name);
+    res.json({ statuses });
+  })
+);
+
 router.post(
   "/category",
   validate(statusValidationSchema),
   catchAsync(async (req: Request, res: Response) => {
-    const category = new CategoryModel(req.body);
+    const name = req.body.name;
+    const user = req.user.id;
+    console.log(name, user);
+    const category = new CategoryModel({ name, user });
     await category.save();
     res.json(category);
   })
@@ -76,7 +100,9 @@ router.post(
   "/status",
   validate(statusValidationSchema),
   catchAsync(async (req: Request, res: Response) => {
-    const status = new StatusModel(req.body);
+    const { name } = req.body;
+    const user = req.user.id;
+    const status = new StatusModel({ name, user });
     await status.save();
     res.json(status);
   })

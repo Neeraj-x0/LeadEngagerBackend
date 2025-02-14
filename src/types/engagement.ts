@@ -1,3 +1,4 @@
+import { Request } from 'express';
 import { Document } from 'mongoose';
 
 export enum MessageType {
@@ -56,4 +57,17 @@ export interface Campaign {
   startDate: Date;
   endDate?: Date;
   status: 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'PAUSED';
+}
+
+export interface engagementRequest  extends Request {
+  query: {
+    status?: string;
+    category?: string;
+    search?: string;
+    startDate?: string;
+    endDate?: string;
+  }
+  user: {
+    id: string;
+  }
 }

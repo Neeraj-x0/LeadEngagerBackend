@@ -3,10 +3,14 @@ import { messageHandler } from '../../services/WhatsApp';
 import { AppError } from '../errorHandler';
 import MailService from '../mail';
 import { UserRequest, MediaOptions, SendMessageRequest, EmailAttachment, ChannelResult, WhatsAppResult, EmailResult, ProcessResults } from './types';
-import { isValidObjectId } from 'mongoose';
+import mongoose, { isValidObjectId } from 'mongoose';
 
 // Utility functions for better organization
-const parseChannels = (channelsStr: string): string[] => {
+const parseChannels = (channelsStr: string | string[]): string[] => {
+    if (Array.isArray(channelsStr)) {
+        return channelsStr.map(channel => channel.toLowerCase());
+    }
+
     const normalized = channelsStr.toLowerCase();
     if (normalized === 'whatsapp,email' || normalized === 'email,whatsapp') {
         return ['whatsapp', 'email'];
@@ -142,7 +146,7 @@ async function sendEmail(
     to: string[],
     subject: string,
     body: string,
-    data: { title: string; note: string },
+    data: { title: string; note: string, from: string, engagementID: string},
     type: "mailgun" | "gmail" = "mailgun",
     bodyType: "html" | "text" = "text",
     mailService: MailService,

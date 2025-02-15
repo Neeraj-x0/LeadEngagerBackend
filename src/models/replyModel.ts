@@ -7,13 +7,13 @@ const replySchema = new mongoose.Schema({
     required: true
   },
   reply: {
-    type: String,
-    required: true
+    type: Boolean,
+    default: false
   },
   replyDate: {
     type: Date,
     required: true,
-    default: Date.now().toLocaleString()
+    default: Date.now()
   },
   lead: {
     type: mongoose.Schema.Types.ObjectId,
@@ -23,7 +23,6 @@ const replySchema = new mongoose.Schema({
   engagementID: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Engagement",
-    required: true
   },
   user: {
     type: mongoose.Schema.Types.ObjectId,

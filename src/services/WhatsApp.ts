@@ -16,10 +16,13 @@ import {
 
   WhatsAppMessageContent,
   MediaOptions,
+  createMessageQuery,
 } from "../types/WhatsApp";
 import { validatePhone } from "../utils/functions";
 import { MessageModel } from "../models/MessageModel";
 import { processMessage } from "../utils/IncomingMessage";
+import { LeadModel } from "../models/LeadModel";
+import { createMessage } from "../database/messages";
 const messageResponseType = proto.WebMessageInfo;
 class MessageHandler {
   private static instance: MessageHandler;
@@ -77,7 +80,7 @@ class MessageHandler {
 
     sock.ev.on("creds.update", saveCreds);
     sock.ev.on("messages.upsert", async (data) => {
-      await processMessage(data,sock);
+      await processMessage(data, sock);
     });
   }
 
@@ -92,26 +95,41 @@ class MessageHandler {
     }
 
     try {
-      console.log(content)
-
-      console.log(`Sending message to ${jid}:`, content);
       const result = await this.sock.sendMessage(jid, {
         ...content,
         caption: options.caption || "",
         fileName: options.fileName || "file",
         mimetype: options.mimetype || "",
       });
-      console.log(`Message sent to ${jid}:`, result);
 
       if (!result) {
         throw new AppError("Failed to send message: No result returned", 500);
       }
-
-      await MessageModel.create({
-        content: result.message, key: result.key, engagementID: platformOptions.engagementID, user: platformOptions.id, type: Object.keys(content)[0]
+      const receiver = await LeadModel.findOne({ phone: jid.split("@")[0] });
+      if (!receiver) {
+        throw new AppError("Failed to send message: Lead not found", 500);
       }
-      )
+      const contentType = Object.keys(content)[0];
+      let type: "text" | "image" | "video" | "audio" | "document";
+      if (contentType === "text" || contentType === "image" || contentType === "video" || contentType === "audio" || contentType === "document") {
+        type = contentType;
+      } else {
+        throw new AppError("Invalid message type", 400);
+      }
+      const query: createMessageQuery = {
+        content: result.message, key: result.key, type,
+        receiver: receiver._id
+      }
 
+      console.log("query", query)
+      if (platformOptions.id) {
+        query.user = platformOptions.id;
+      }
+      if (platformOptions.engagementID) {
+        query.engagementID = platformOptions.engagementID;
+      }
+
+      await createMessage(query);
       return result;
     } catch (error) {
       const errorMessage =
@@ -127,7 +145,8 @@ class MessageHandler {
     phone: string[],
     content: any,
     options: MediaOptions = {},
-    type: "text" | "image" | "video" | "audio" | "sticker" = "text"
+    type: "text" | "image" | "video" | "audio" | "sticker" = "text",
+    platformOptions: any = {}
   ): Promise<Array<typeof messageResponseType>> {
     const messages = [];
     if (!this.sock) {
@@ -145,6 +164,7 @@ class MessageHandler {
         jids[i],
         { [type]: content },
         options,
+        platformOptions
       );
 
       messages.push(messageResponse);

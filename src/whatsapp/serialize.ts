@@ -1,14 +1,21 @@
-import { downloadContentFromMessage, getContentType, WASocket } from "baileys";
+import { downloadContentFromMessage, getContentType, proto, WASocket } from "baileys";
 import fsSync, { promises as fs } from "fs";
 import path from "path";
 import { fromBuffer } from "file-type";
 import { ExtendedIMessageInfo, ExtendedWASocket, QuotedMessage } from "./types";
-import { createEmptyQuotedMessage, processQuotedMessage } from "./functions";
+import { createEmptyQuotedMessage, downloadMedia, processQuotedMessage } from "./functions";
+import { LeadModel } from "../models/LeadModel";
 
+function parseType(message: proto.IMessage) {
+  let type: string = getContentType(message) || "";
+  if (type === "extendedTextMessage") {
+    type = "text"
+  } else {
+    type = type.replace("Message", "").toLowerCase()
+  }
+  return type;
 
-
-
-
+}
 async function serialize(conn: ExtendedWASocket, message: ExtendedIMessageInfo): Promise<{ conn: ExtendedWASocket, message: ExtendedIMessageInfo }> {
   if (message.key) {
     Object.assign(message, {
@@ -17,6 +24,15 @@ async function serialize(conn: ExtendedWASocket, message: ExtendedIMessageInfo):
       from: message.key.remoteJid
     });
   }
+  const lead =  message.from ? (await LeadModel.findOne({ phone: message.from.split("@")[0] }))?._id: null;
+  if (lead) {
+    message.leadID = lead;
+  }
+  message.type = getContentType(message.message);
+  let parsedType: string = parseType(message.message);
+
+  (message as any)[parsedType] = parsedType === 'text' ? (message.message as any)[message.type!]?.text || false : (message.message as any)[message.type!] || false;
+
 
   if (message.message) {
     message.type = getContentType(message.message);
@@ -32,6 +48,8 @@ async function serialize(conn: ExtendedWASocket, message: ExtendedIMessageInfo):
       message.quoted = createEmptyQuotedMessage(message.from!);
     }
   }
+
+  message.download = (pathFile?: string) => downloadMedia(message.message, pathFile);
 
   // Add file handling capability
   conn.getFile = createFileHandler();

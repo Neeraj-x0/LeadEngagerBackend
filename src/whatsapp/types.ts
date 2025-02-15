@@ -1,4 +1,5 @@
 import { WASocket, proto } from "baileys";
+import mongoose from "mongoose";
 
 interface MessageType {
     key: {
@@ -37,6 +38,9 @@ interface ExtendedWASocket extends WASocket {
     getFile?: (PATH: string | Buffer, returnAsFilename?: boolean) => Promise<FileData>;
 }
 interface ExtendedIMessageInfo extends proto.IWebMessageInfo {
+    leadID: mongoose.Types.ObjectId 
+    download: (pathFile: string) => Promise<string | Buffer<ArrayBufferLike>>;
+    body: any;
     message: proto.IMessage & {
         type?: string;
         stanzaId?: any;

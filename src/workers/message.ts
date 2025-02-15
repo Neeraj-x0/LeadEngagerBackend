@@ -1,18 +1,28 @@
 import { sendEmail } from '../utils/engagement/functions';
 import { messageHandler } from '../services/WhatsApp';
-
 import { Queue, Worker, Job } from "bullmq";
 import IORedis from "ioredis";
 import MailService from '../utils/mail';
+import { logDebug, logError, logInfo } from '../utils/logger';
 
-// Thoughtful consideration of connection handling...
+
+
+// Redis connection setup with logging
 const connection = new IORedis({
     host: process.env.REDIS_HOST || "localhost",
     port: parseInt(process.env.REDIS_PORT || "6379"),
     maxRetriesPerRequest: null,
 });
 
-// Interface for our job status tracking
+connection.on('connect', () => {
+    logInfo('Redis', 'Successfully connected to Redis');
+});
+
+connection.on('error', (error) => {
+    logError('Redis', 'Connection error', error);
+});
+
+// Rest of the interfaces remain the same
 interface JobStatus {
     total: number;
     completed: number;
@@ -21,7 +31,7 @@ interface JobStatus {
     error?: string;
 }
 
-// Carefully structured queue definitions   
+// Queue definitions with logging
 const whatsappQueue = new Queue('whatsapp-messages', {
     connection,
     defaultJobOptions: {
@@ -44,7 +54,7 @@ const emailQueue = new Queue('email-messages', {
     },
 });
 
-// Thoughtful approach to status management
+// Enhanced JobStatusManager with logging
 class JobStatusManager {
     private redis: IORedis;
 
@@ -54,98 +64,150 @@ class JobStatusManager {
 
     async updateStatus(jobId: string | number, update: Partial<JobStatus>): Promise<JobStatus> {
         const key = `job-status:${jobId}`;
-        const currentStatus = await this.redis.get(key);
-        const status: JobStatus = currentStatus ? JSON.parse(currentStatus) : {
-            total: 0,
-            completed: 0,
-            failed: 0,
-            status: 'pending'
-        };
+        try {
+            const currentStatus = await this.redis.get(key);
+            const status: JobStatus = currentStatus ? JSON.parse(currentStatus) : {
+                total: 0,
+                completed: 0,
+                failed: 0,
+                status: 'pending'
+            };
 
-        const newStatus = { ...status, ...update };
-        await this.redis.set(key, JSON.stringify(newStatus));
-        await this.redis.expire(key, 86400); // 24 hour retention
+            const newStatus = { ...status, ...update };
+            await this.redis.set(key, JSON.stringify(newStatus));
+            await this.redis.expire(key, 86400);
 
-        return newStatus;
+            logDebug('JobStatusManager', `Updated status for job ${jobId}`, newStatus);
+            return newStatus;
+        } catch (error) {
+            logError('JobStatusManager', `Failed to update status for job ${jobId}`, error);
+            throw error;
+        }
     }
 
     async getStatus(jobId: string): Promise<JobStatus | null> {
-        const status = await this.redis.get(`job-status:${jobId}`);
-        return status ? JSON.parse(status) : null;
+        try {
+            const status = await this.redis.get(`job-status:${jobId}`);
+            logDebug('JobStatusManager', `Retrieved status for job ${jobId}`, status);
+            return status ? JSON.parse(status) : null;
+        } catch (error) {
+            logError('JobStatusManager', `Failed to get status for job ${jobId}`, error);
+            return null;
+        }
     }
 }
 
 const statusManager = new JobStatusManager(connection);
 
-// Carefully designed worker implementations
-// Enhanced whatsapp worker
+// Enhanced WhatsApp worker with detailed logging
 const whatsappWorker = new Worker('whatsapp-messages', async (job: Job) => {
     const { leads, message, mediaOptions, mediaType, userId, engagementId } = job.data;
     let processed = 0;
     let failed = 0;
     const batchSize = 10;
 
+    logInfo('WhatsappWorker', `Starting job ${job.id}`, {
+        totalLeads: leads.length,
+        userId,
+        engagementId
+    });
+
     await statusManager.updateStatus(job.id!, {
         total: leads.length,
         status: 'processing'
     });
 
-    // Validate input data
+    // Input validation with logging
     if (!leads || !Array.isArray(leads) || leads.length === 0) {
-        throw new Error('Invalid or empty leads array');
+        const error = 'Invalid or empty leads array';
+        logError('WhatsappWorker', error, { jobId: job.id });
+        throw new Error(error);
     }
 
     if (!message) {
-        throw new Error('Message content is required');
+        const error = 'Message content is required';
+        logError('WhatsappWorker', error, { jobId: job.id });
+        throw new Error(error);
     }
 
     for (let i = 0; i < leads.length; i += batchSize) {
         const batch = leads.slice(i, i + batchSize);
+        const batchNumber = Math.floor(i / batchSize) + 1;
+
+        logDebug('WhatsappWorker', `Processing batch ${batchNumber}`, {
+            jobId: job.id,
+            batchSize: batch.length,
+            totalProcessed: processed
+        });
+
         try {
-            // Add logging for debugging
-            console.log(`Processing batch ${i / batchSize + 1}, size: ${batch.length}`);
-            console.log('Message type:', typeof message);
-            console.log('Media options:', mediaOptions);
-            ;
+            let processedMessage;
+            if (typeof message === 'string') {
+                processedMessage = message;
+            } else if (Buffer.isBuffer(message)) {
+                processedMessage = message;
+            } else if (message && typeof message === 'object' && 'data' in message) {
+                processedMessage = Buffer.from(message.data);
+            }
 
             await messageHandler.sendBulkMessages(
                 batch.map(lead => lead.phone),
-                Buffer.from(message.data),
+                processedMessage,
                 mediaOptions,
-                mediaType
+                mediaType,
+                { id: userId, engagementID: engagementId }
             );
+
             processed += batch.length;
+
+            logInfo('WhatsappWorker', `Batch ${batchNumber} completed successfully`, {
+                jobId: job.id,
+                processed,
+                total: leads.length
+            });
 
             await statusManager.updateStatus(job.id!, {
                 completed: processed,
-                status: 'processing'  // Maintain processing status until completely done
+                status: 'processing'
             });
             await job.updateProgress(Math.floor((processed / leads.length) * 100));
 
-            // More granular rate limiting
-            const delay = Math.min(1000 * (batch.length / 10), 5000);  // Dynamic delay based on batch size
+            const delay = Math.min(1000 * (batch.length / 10), 5000);
             await new Promise(resolve => setTimeout(resolve, delay));
         } catch (error: any) {
-            console.error('Batch processing error:', error);
-            failed += batch.length;
-
-            // More detailed error tracking
-            await statusManager.updateStatus(job.id!, {
-                failed,
-                error: `Batch ${i / batchSize + 1} failed: ${error?.message || 'Unknown error occurred'}`
+            logError('WhatsappWorker', `Batch ${batchNumber} failed`, {
+                error,
+                jobId: job.id,
+                batchSize: batch.length
             });
 
-            // Only throw if ALL attempts have failed
+            failed += batch.length;
+
+            await statusManager.updateStatus(job.id!, {
+                failed,
+                error: `Batch ${batchNumber} failed: ${error?.message || 'Unknown error occurred'}`
+            });
+
             if (failed === leads.length) {
-                throw new Error(`All ${leads.length} attempts failed. Last error: ${error?.message}`);
+                const finalError = `All ${leads.length} attempts failed. Last error: ${error?.message}`;
+                logError('WhatsappWorker', 'Job failed completely', {
+                    jobId: job.id,
+                    error: finalError
+                });
+                throw new Error(finalError);
             }
         }
     }
 
-    // Final status update
     const finalStatus = failed === leads.length ? 'failed' :
         failed > 0 ? 'completed_with_errors' :
             'completed';
+
+    logInfo('WhatsappWorker', `Job ${job.id} completed`, {
+        status: finalStatus,
+        processed,
+        failed
+    });
 
     await statusManager.updateStatus(job.id!, {
         status: finalStatus,
@@ -163,30 +225,36 @@ const whatsappWorker = new Worker('whatsapp-messages', async (job: Job) => {
     },
 });
 
-whatsappWorker.on('failed', async (job: Job | undefined, error: Error) => {
-    console.error('Worker failed:', error);
-    if (job) {
-        await statusManager.updateStatus(job.id!, {
-            status: 'failed',
-            error: `Worker error: ${error.message}`
-        });
-    }
-});
-
+// Enhanced email worker with detailed logging
 const emailWorker = new Worker('email-messages', async (job: Job) => {
     const { leads, emailSubject, customHTML, emailData, type, emailBodyType, mailServiceData, file } = job.data;
     let processed = 0;
     let failed = 0;
     const batchSize = 50;
 
+    logInfo('EmailWorker', `Starting job ${job.id}`, {
+        totalLeads: leads.length,
+        emailSubject,
+        type
+    });
+
     await statusManager.updateStatus(job.id!, {
         total: leads.length,
         status: 'processing'
     });
+
     const mailService = new MailService(mailServiceData);
 
     for (let i = 0; i < leads.length; i += batchSize) {
         const batch = leads.slice(i, i + batchSize);
+        const batchNumber = Math.floor(i / batchSize) + 1;
+
+        logDebug('EmailWorker', `Processing batch ${batchNumber}`, {
+            jobId: job.id,
+            batchSize: batch.length,
+            totalProcessed: processed
+        });
+
         try {
             await sendEmail(
                 batch.filter((lead: { email: any; }) => lead.email).map((lead: { email: any; }) => lead.email),
@@ -198,11 +266,24 @@ const emailWorker = new Worker('email-messages', async (job: Job) => {
                 mailService,
                 file
             );
+
             processed += batch.length;
+
+            logInfo('EmailWorker', `Batch ${batchNumber} completed successfully`, {
+                jobId: job.id,
+                processed,
+                total: leads.length
+            });
 
             await statusManager.updateStatus(job.id!, { completed: processed });
             await job.updateProgress(Math.floor((processed / leads.length) * 100));
         } catch (error: any) {
+            logError('EmailWorker', `Batch ${batchNumber} failed`, {
+                error,
+                jobId: job.id,
+                batchSize: batch.length
+            });
+
             failed += batch.length;
             await statusManager.updateStatus(job.id!, {
                 failed,
@@ -210,28 +291,40 @@ const emailWorker = new Worker('email-messages', async (job: Job) => {
             });
 
             if (failed === leads.length) {
-                throw new Error('All attempts failed');
+                const finalError = 'All attempts failed';
+                logError('EmailWorker', 'Job failed completely', {
+                    jobId: job.id,
+                    error: finalError
+                });
+                throw new Error(finalError);
             }
         }
     }
 
+    logInfo('EmailWorker', `Job ${job.id} completed`, {
+        processed,
+        failed
+    });
+
     return { processed, failed };
 }, {
     connection,
-    concurrency: 2,  // Emails can handle more concurrent processing
+    concurrency: 2,
     limiter: {
         max: 200,
         duration: 1000,
     },
 });
 
-// Event handling for deeper insights
+// Enhanced event handlers with logging
 whatsappWorker.on('completed', async (job: Job) => {
+    logInfo('WhatsappWorker', `Job ${job.id} completed successfully`);
     await statusManager.updateStatus(job.id!, { status: 'completed' });
 });
 
 whatsappWorker.on('failed', async (job: Job | undefined, error: Error, prev: string) => {
     if (job) {
+        logError('WhatsappWorker', `Job ${job.id} failed`, error);
         await statusManager.updateStatus(job.id!, {
             status: 'failed',
             error: error.message
@@ -240,13 +333,13 @@ whatsappWorker.on('failed', async (job: Job | undefined, error: Error, prev: str
 });
 
 emailWorker.on('completed', async (job: Job) => {
+    logInfo('EmailWorker', `Job ${job.id} completed successfully`);
     await statusManager.updateStatus(job.id!, { status: 'completed' });
 });
 
-
-
 emailWorker.on('failed', async (job: Job | undefined, error: Error, prev: string) => {
     if (job) {
+        logError('EmailWorker', `Job ${job.id} failed`, error);
         await statusManager.updateStatus(job.id!, {
             status: 'failed',
             error: error.message
@@ -254,5 +347,4 @@ emailWorker.on('failed', async (job: Job | undefined, error: Error, prev: string
     }
 });
 
-// Export the queue instances for external use
 export { whatsappQueue, emailQueue, statusManager };

@@ -21,7 +21,7 @@ interface MediaOptions {
 interface SendMessageRequest {
     type?: "mailgun" | "gmail";
     emailSubject?: string;
-    emailData?: any;
+    emailData: { title: string; note: string, from: string, engagementID: string },
     emailBodyType?: 'html' | 'text';
     mediaType?: "text" | "image" | "video" | "audio" | "sticker";
     customHTML?: string;
@@ -59,4 +59,4 @@ interface EmailAttachment {
 
 
 
-export { UserRequest, MediaOptions, SendMessageRequest, ChannelResult, WhatsAppResult, EmailResult, ProcessResults,EmailAttachment };
+export { UserRequest, MediaOptions, SendMessageRequest, ChannelResult, WhatsAppResult, EmailResult, ProcessResults, EmailAttachment };

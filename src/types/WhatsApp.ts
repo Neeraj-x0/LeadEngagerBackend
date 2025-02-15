@@ -1,8 +1,18 @@
+import { proto } from "baileys";
 import { Request, Response } from "express";
+import mongoose from "mongoose";
 
 // Base interfaces
 export interface WhatsAppBaseRequest extends Request {
   body: {};
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    phoneNumber: string;
+    companyName: string;
+    companyLogo: string
+  }
   lead: {
     id: string;
     name: string;
@@ -108,7 +118,7 @@ export interface MediaOptions {
   packname?: string;
   mimetype?: string;
   author?: string;
-  
+
 }
 
 export interface MediaRequest extends WhatsAppBaseRequest {
@@ -134,6 +144,16 @@ export interface WhatsAppMessageContent {
   viewOnce?: boolean;
   fileName?: string;
   mimetype?: string;
+}
+
+
+export interface createMessageQuery {
+  engagementID?: mongoose.Schema.Types.ObjectId;
+  content: proto.IMessage | null | undefined;
+  key: proto.IMessageKey
+  user?: mongoose.Schema.Types.ObjectId;
+  type: "text" | "image" | "video" | "audio" | "document";
+  receiver: mongoose.Types.ObjectId
 }
 
 // Additional WhatsApp message types

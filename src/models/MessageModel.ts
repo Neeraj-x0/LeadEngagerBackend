@@ -14,7 +14,8 @@ const messageSchema = new mongoose.Schema({
     required: true,
   },
   receiver: {
-    type: String,
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Lead",
     required: true,
   },
   leadId: {
@@ -40,7 +41,7 @@ const messageSchema = new mongoose.Schema({
   },
   timestamp: {
     type: Date,
-    default: Date.now,
+    default: Date.now(),
   },
 });
 

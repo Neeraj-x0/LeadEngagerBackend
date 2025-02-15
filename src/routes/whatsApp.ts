@@ -23,8 +23,9 @@ router.post(
       console.log("req.body", req.body);
       const { message } = req.body;
       const { phone } = req.lead;
+
       const jid = `${validatePhone(phone)}@s.whatsapp.net`;
-      await messageHandler.sendMessage(jid, message, {});
+      await messageHandler.sendMessage(jid, { text: message }, {}, { id: req.user.id });
       res.json({ success: true, message: "Text message sent successfully" });
     }
   )
@@ -46,8 +47,9 @@ router.post(
 
     await messageHandler.sendMessage(
       jid,
-      content,
+      { [mediaType]: content },
       { caption: caption || "", fileName: fileName || "file", mimetype: type },
+      { id: req.user.id }
     );
 
     res.json({ success: true, message: `${mediaType} sent successfully` });

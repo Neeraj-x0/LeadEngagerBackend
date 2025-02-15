@@ -195,6 +195,7 @@ class ReminderScheduler {
         from: userData.id,
         to: emailAddresses,
         subject: emailSubject,
+        engagementID: reminder.engagementId,
       });
     } catch (error) {
       console.error(`Email error for reminder ${reminder._id}:`, error);

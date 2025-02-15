@@ -22,6 +22,8 @@ import { AppError, catchAsync } from "../utils/errorHandler";
 import { UserRequest, MediaOptions, SendMessageRequest, ProcessResults } from '../utils/engagement/types';
 import { parseChannels, processEmailChannel, processWhatsAppChannel, validateRequest } from "../utils/engagement/functions";
 import { emailQueue, whatsappQueue } from "../workers/message";
+import { LeadModel } from "../models/LeadModel";
+import mongoose from "mongoose";
 const router = express.Router();
 
 // Utility function to format UTC date
@@ -64,7 +66,10 @@ router.post(
       customHTML: initialHTML,
       message: initialMessage = '',
     } = req.body as SendMessageRequest;
-
+    if (emailData) {
+      emailData.from = req.user.id;
+      emailData.engagementID = engagementId;
+    }
     // File and message handling...
     let message: string | Buffer = initialMessage;
     const mediaOptions: MediaOptions = {};
@@ -80,7 +85,7 @@ router.post(
     if (req.body.templateId) {
       customHTML = await fetchHtml(req.body.templateId);
     }
-console.log(req.body.channels)
+    console.log(req.body.channels)
 
     const channels = parseChannels(req.body.channels);
     const jobs: { channel: string; jobId: string }[] = [];
@@ -451,28 +456,57 @@ router.get(
 // /engagement/${engagementId}/messages
 // get /engagements/:id/messages - Create a new message for an engagement
 
+
 router.get(
   "/:id/replies",
   catchAsync(async (req: Request, res: Response) => {
-    const { id } = req.user;
+    const { id: userId } = req.user;
+    const { id: engagementId } = req.params;
 
-    if (!isValidObjectId(req.params.id)) {
+    if (!isValidObjectId(engagementId)) {
       return res.status(400).json({
         status: "fail",
         message: "Invalid engagement ID Provided",
       });
     }
-    const response = await ReplyModel.find({
-      engagementID: req.params.id,
-      user: id,
-    });
+
+    // Get all replies with populated message and lead data
+    const replies = await ReplyModel.find({
+      engagementID: engagementId,
+      user: userId,
+    })
+      .populate('messageID', 'content type source createdAt')
+      .populate<{ messageID: any, lead: { name: string, email: string, phone: string, _id: mongoose.Types.ObjectId } }>({
+        path: 'lead',
+        model: LeadModel,
+        select: 'name email phone'
+      })
+      .sort({ replyDate: -1 });
+
+
+
+    // Transform the data for frontend consumption
+    const formattedReplies = replies.map(reply => ({
+      id: reply._id,
+      messageId: reply.messageID._id,
+      leadInfo: {
+        id: reply.lead._id,
+        name: reply.lead.name,
+        email: reply.lead.email,
+        phone: reply.lead.phone
+      },
+      timestamp: reply.replyDate,
+      source: "whatsapp",
+      messageType: reply.messageID.type
+    }));
 
     res.status(200).json({
       status: "success",
-      data: response,
+      data: formattedReplies,
     });
   })
 );
+
 
 router.get(
   "/:id/messages",

@@ -50,6 +50,10 @@ const leadModelSchema = new mongoose.Schema({
       message: "Category must exist in CategoryModel",
     },
   },
+  lastMessage: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Message",
+  },
   notes: String,
   createdAt: {
     type: Date,

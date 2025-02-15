@@ -3,6 +3,8 @@ import jwt, { JwtPayload } from "jsonwebtoken";
 import { AppError } from "../utils/errorHandler";
 import dotenv from "dotenv";
 import { getLeadById } from "../database/leads";
+import { UserModel } from "../models/UserModel";
+import { Document } from "mongoose";
 
 dotenv.config();
 interface CustomRequest extends Request {
@@ -25,10 +27,14 @@ export const validateJWT = async (
   const token = authHeader.split(" ")[1];
 
   try {
-  
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string);
-    req.user = decoded; // Attach user payload to request
+    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as Document & typeof UserModel;
+    const user = await UserModel.findById(decoded.id)
+    if (!user) {
+      return next(new AppError("Unauthorized: Invalid token", 401));
+    }
+    req.user = user;
+
     if (clientId) {
       const clientIdStr = Array.isArray(clientId) ? clientId[0] : clientId;
       req.lead = await getLeadById(clientIdStr, (req.user as JwtPayload).id);

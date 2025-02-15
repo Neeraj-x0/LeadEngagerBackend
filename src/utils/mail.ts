@@ -6,6 +6,8 @@ import { AppError } from "./errorHandler";
 import { EmailModel } from "../models/EmailModel";
 import fileType from "file-type";
 import { renderBody } from "./functions";
+import { LeadModel } from "../models/LeadModel";
+import { logError } from "./logger";
 
 // Define clear interfaces for better type safety
 interface UserData {
@@ -25,6 +27,7 @@ interface SendMailResponse {
 }
 
 interface EmailData {
+  engagementID: string;
   to: string[];
   from: mongoose.Types.ObjectId;
   subject: string;
@@ -98,6 +101,7 @@ class MailService {
     file?: EmailAttachment
   ): Promise<SendMailResponse> {
     try {
+      console.log("Sending via Mailgun");
 
       const mailOptions: Record<string, any> = {
         from: this.defaultFrom,
@@ -106,17 +110,21 @@ class MailService {
         [bodyType]: renderBody(body, data, bodyType)
       };
 
-      let attachmentData: Buffer;
-      if (file && Buffer.isBuffer(file.buffer)) {
-        attachmentData = file.buffer;
-      } else if (file && file.buffer) {
-        attachmentData = Buffer.from(file.buffer);
-      } else {
-        throw new AppError("Invalid file buffer", 400);
-      }
-
+      // Handle case with file attachment
       if (file) {
+        let attachmentData: Buffer;
+
+        // Validate and process file buffer
+        if (Buffer.isBuffer(file.buffer)) {
+          attachmentData = file.buffer;
+        } else if (file.buffer) {
+          attachmentData = Buffer.from(file.buffer);
+        } else {
+          throw new AppError("Invalid file buffer provided", 400);
+        }
+
         this.validateFileSize(file.size);
+
         const messageData = {
           ...mailOptions,
           attachment: {
@@ -127,19 +135,32 @@ class MailService {
         };
 
         const response = await this.mg.messages.create(this.domain, messageData);
-        return { id: response.id || "", message: response.message || "" };
+        return {
+          id: response.id || "",
+          message: response.message || ""
+        };
       }
 
-      const response = await this.mg.messages.create(this.domain, mailOptions as MailgunMessageData);
-      return { id: response.id || "", message: response.message || "" };
+      // Handle case without file attachment
+      const response = await this.mg.messages.create(
+        this.domain,
+        mailOptions as MailgunMessageData
+      );
+
+      console.log("Mailgun response:", response);
+      return {
+        id: response.id || "",
+        message: response.message || ""
+      };
+
     } catch (error) {
+      logError('Mailgun', 'Failed to send email', error);
       throw new AppError(
         `Mailgun Error: ${error instanceof Error ? error.message : String(error)}`,
         500
       );
     }
   }
-
   private async sendViaGmail(
     email: string[],
     subject: string,
@@ -149,6 +170,7 @@ class MailService {
     fileBuffer?: Buffer
   ): Promise<SendMailResponse> {
     try {
+      console.log("Sending via Gmail");
       const mailOptions: Record<string, any> = {
         from: `Razominer <${process.env.NODE_USER}>`,
         to: email.join(","),
@@ -164,6 +186,13 @@ class MailService {
       }
 
       const response = await this.transporter.sendMail(mailOptions);
+      await this.CreateEmail({
+        to: email,
+        from: data.from,
+        subject,
+        body,
+        engagementID: data.engagementID
+      });
       return { id: response.messageId || "", message: "Email sent via Gmail" };
     } catch (error) {
       throw new AppError(
@@ -216,33 +245,55 @@ class MailService {
     bodyType: "html" | "text" = "html",
     file?: EmailAttachment
   ): Promise<SendMailResponse> {
+    console.log("Sending Mail");
     return type === "gmail"
       ? this.sendViaGmail(email, subject, body, data, bodyType, file?.buffer)
       : this.sendViaMailgun(email, subject, body, data, bodyType, file);
   }
 
   async CreateEmail(data: EmailData) {
-    this.validateEmailData(data);
+    try {
+      this.validateEmailData(data);
 
-    const emailsToSave = data.to.map((toEmail) => ({
-      ...data,
-      to: toEmail,
-      user: data.from,
-      sentAt: new Date()
-    }));
+      // Fetch all leads in one query
+      const leads = await LeadModel.find({
+        email: { $in: data.to }
+      }).select('email _id');
 
-    const newEmails = await EmailModel.insertMany(emailsToSave);
-    return {
-      success: true,
-      message: "Emails created successfully",
-      data: newEmails
-    };
+      // Create a map for quick lookup
+      const leadMap = new Map(
+        leads.map(lead => [lead.email, lead._id])
+      );
+
+      const emailsToSave = data.to.map(toEmail => ({
+        ...data,
+        to: toEmail,
+        receiver: leadMap.get(toEmail) || null,
+        user: data.from,
+        engagementID : data.engagementID,
+        timestamp: new Date()
+      }));
+
+      const newEmails = await EmailModel.insertMany(emailsToSave, { ordered: false });
+      return {
+        success: true,
+        message: "Emails created successfully",
+        data: newEmails
+      };
+    } catch (error) {
+      console.error("Error creating emails:", error);
+      throw new AppError(
+        `Failed to create emails: ${error instanceof Error ? error.message : String(error)}`,
+        500
+      );
+    }
   }
 
   private validateEmailData(data: EmailData): void {
     if (!data.to.every((email) => MailService.EMAIL_REGEX.test(email))) {
       throw new AppError("Invalid email format", 400);
     }
+    console.log(data);
     if (!mongoose.Types.ObjectId.isValid(data.from)) {
       throw new AppError("Invalid sender ID", 400);
     }

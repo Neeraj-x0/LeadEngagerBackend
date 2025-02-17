@@ -59,7 +59,7 @@ async function sendMessage(
     async email() {
       if (!email) throw new Error("Email required for email communication");
       return await mailService.sendMail(
-        email,
+        [email],
         subject || "No Subject",
         body,
         { name: user.name },
@@ -157,7 +157,7 @@ async function sendBulkMessages(
       })
     );
   }
-  
+
   const { channel, body, subject, recipients } = validationResult.data;
   const mailService = new MailService({
     email: user.email,
@@ -211,7 +211,7 @@ async function sendBulkMessages(
                   throw new Error("Email address required");
                 }
                 await mailService.sendMail(
-                  recipient.email,
+                  [recipient.email],
                   subject || "No Subject",
                   body,
                   { name: recipient.name || user.name },
@@ -272,7 +272,7 @@ async function sendBulkMessages(
                     throw new Error("Email address required");
                   }
                   await mailService.sendMail(
-                    recipient.email,
+                    [recipient.email],
                     subject || "No Subject",
                     body,
                     { name: recipient.name || user.name },
@@ -303,9 +303,8 @@ async function sendBulkMessages(
     // Prepare response
     const response: MessageResponse = {
       success: progress.successful > 0,
-      message: `Bulk ${channel.toUpperCase()} messages processed. Success: ${
-        progress.successful
-      }/${progress.total}`,
+      message: `Bulk ${channel.toUpperCase()} messages processed. Success: ${progress.successful
+        }/${progress.total}`,
       result: {
         successful: progress.successful,
         failed: progress.failed,

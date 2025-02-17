@@ -70,14 +70,14 @@ export const CreateEmail = async (
       from,
       subject,
       body,
-      sentAt: new Date(),
+      timestamp: new Date(),
     });
     await newEmail.save();
 
     return {
       success: true,
       message: "Email created successfully",
-      data: { id: newEmail._id, to, subject, sentAt: newEmail.sentAt },
+      data: { id: newEmail._id, to, subject, sentAt: newEmail.timestamp },
     };
   } catch (error: any) {
     return {
@@ -115,7 +115,7 @@ export const DeleteEmail = async (
       };
     }
 
-    if (!email.from) {
+    if (!email.user) {
       return {
         success: false,
         message: "Email sender not found",
@@ -124,7 +124,7 @@ export const DeleteEmail = async (
     }
 
     // Check if the user is authorized to delete
-    if (email.from.toString() !== userId) {
+    if (email.user.toString() !== userId) {
       return {
         success: false,
         message: "Unauthorized to delete this email",

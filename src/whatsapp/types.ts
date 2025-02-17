@@ -38,19 +38,22 @@ interface ExtendedWASocket extends WASocket {
     getFile?: (PATH: string | Buffer, returnAsFilename?: boolean) => Promise<FileData>;
 }
 interface ExtendedIMessageInfo extends proto.IWebMessageInfo {
-    leadID: mongoose.Types.ObjectId 
+    leadID: mongoose.Types.ObjectId
     download: (pathFile: string) => Promise<string | Buffer<ArrayBufferLike>>;
-    body: any;
+    text?: string
+    image?: proto.IMessage
+    video?: proto.IMessage
+    sticker?: proto.IMessage
+    document?: proto.IMessage
+    audio?: proto.IMessage
     message: proto.IMessage & {
-        type?: string;
-        stanzaId?: any;
-        sender?: any;
-        message?: any;
-    };
-    quoted: QuotedMessage 
+        key: proto.IMessageKey
+    }
+    quoted: QuotedMessage
     type: string | undefined;
     isSelf: boolean | null | undefined;
     from: string | null | undefined;
+    isGroup: boolean
     id: string | null | undefined;
 
 }

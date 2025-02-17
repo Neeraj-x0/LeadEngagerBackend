@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { ReplyModel } from "../models/replyModel";
 import { LeadModel } from "../models/LeadModel";
+import { MessageModel } from "../models/MessageModel";
 
 async function updateReplyStatus(lead: mongoose.Types.ObjectId) {
     try {
@@ -8,7 +9,14 @@ async function updateReplyStatus(lead: mongoose.Types.ObjectId) {
         if (!lastMessage) {
             return;
         }
-        await ReplyModel.findOneAndUpdate({ messageID: lastMessage.lastMessage }, { reply: true });
+        const message = await MessageModel.findOne({ _id: lastMessage.lastMessage });
+        if (!message) return;
+        const messageID = message._id;
+        const receiver = message.receiver;
+        const engagementID = message.engagementID;
+        const user = message.user;
+        await ReplyModel.create({ messageID, lead: receiver, engagementID, user })
+        return;
     } catch (error) {
         console.error("Error updating reply status:", error);
         throw error;

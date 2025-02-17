@@ -18,6 +18,7 @@ import EmailRouter from "./routes/Email";
 import ReminderRouter from "./routes/Reminder";
 import testRouter from "./routes/testRoutes";
 import statusRouter from "./routes/status";
+import generateRouter from "./routes/posterGenerator";
 import { validateJWT } from "./middlewares/jwtValidator";
 import { fetchClient } from "./middlewares/fetchClient";
 import connectToDatabase from "./utils/database";
@@ -30,7 +31,7 @@ const port = process.env.PORT || 3000;
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-app.use(upload.single("file"));
+app.use(upload.fields([{ name: "file", maxCount: 1 }, { name: "background", maxCount: 1 }, { name: "icon", maxCount: 1 }]));
 
 app.use(
   cors({
@@ -88,7 +89,7 @@ app.use("/api/whatsapp", WhatsAppRouter);
 app.use("/api/email", EmailRouter);
 app.use("/api/reminder", ReminderRouter)
 app.use("/api/status", statusRouter);
-
+app.use("/api/generate", generateRouter);
 app.use("/test", testRouter);
 
 // Global Error Handler

@@ -1,10 +1,9 @@
 import { AppError } from "../utils/errorHandler";
-import { UserFacingSocketConfig, WAMessage } from "baileys";
+import {  WAMessage } from "baileys";
 import { GoogleGenerativeAI, GenerativeModel } from "@google/generative-ai";
+import { ExtendedWASocket } from "../whatsapp/types";
 
 class ChatBotService {
-  private client: UserFacingSocketConfig;
-  private message: WAMessage;
   private model!: GenerativeModel;
   private static readonly SYSTEM_PROMPT = `You are LeadsBot, an intelligent lead engagement assistant designed to provide instant, personalized responses to potential customers. Your primary goal is to qualify leads and guide them through the sales funnel while maintaining a professional, friendly, and engaging conversation.
 
@@ -80,12 +79,7 @@ Your success is measured by:
 5. Customer satisfaction
 `;
 
-  constructor(client: UserFacingSocketConfig, message: WAMessage) {
-    if (!client || !message) {
-      throw new AppError("Client and message are required", 400);
-    }
-    this.client = client;
-    this.message = message;
+  constructor() {
     this.initializeModel();
   }
 

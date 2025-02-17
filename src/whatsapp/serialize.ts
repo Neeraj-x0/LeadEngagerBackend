@@ -20,11 +20,11 @@ async function serialize(conn: ExtendedWASocket, message: ExtendedIMessageInfo):
   if (message.key) {
     Object.assign(message, {
       id: message.key.id,
-      isSelf: message.key.fromMe,
-      from: message.key.remoteJid
+      from: message.key.remoteJid,
+      isGroup: message.key.remoteJid?.endsWith("@g.us") || false
     });
   }
-  const lead =  message.from ? (await LeadModel.findOne({ phone: message.from.split("@")[0] }))?._id: null;
+  const lead = message.from ? (await LeadModel.findOne({ phone: message.from.split("@")[0] }))?._id : null;
   if (lead) {
     message.leadID = lead;
   }

@@ -8,7 +8,7 @@ const replySchema = new mongoose.Schema({
   },
   reply: {
     type: Boolean,
-    default: false
+    default: true
   },
   replyDate: {
     type: Date,

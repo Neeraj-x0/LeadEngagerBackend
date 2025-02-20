@@ -1,7 +1,7 @@
 import { Router, Response } from "express";
 import { Request } from "../types";
 import { catchAsync } from "../utils/errorHandler";
-import MailService from "../utils/mail";
+import MailService from "../services/Email";
 import { fetchHtml } from "../database/template";
 import { validate } from "../middlewares/validationMiddleware";
 import { emailValidationSchema } from "../validation/email";

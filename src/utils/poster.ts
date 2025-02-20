@@ -80,6 +80,8 @@ class PosterGenerator {
     }
   }
 
+
+
   private async convertToPng(imageBuffer: Buffer): Promise<Buffer> {
     return await sharp(imageBuffer)
       .png()
@@ -87,6 +89,7 @@ class PosterGenerator {
   }
 
   async generate(options: PosterOptions): Promise<Buffer> {
+    console.log("options", options);
     if (options.note.length > 255) {
       throw new AppError('Note must be 255 characters or less', 400);
     }
@@ -160,6 +163,7 @@ class PosterGenerator {
 
     return this.canvas.toBuffer('image/png');
   }
+
 }
 
 export { PosterGenerator };

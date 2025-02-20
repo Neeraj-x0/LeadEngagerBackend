@@ -20,12 +20,13 @@ const userSchema = new mongoose.Schema({
   },
   companyName: {
     type: String,
-    default: "Company Name",
+    default: "Axintract",
   },
   companyLogo: {
-    type: String,
-    default:
-      "https://res.cloudinary.com/dyfhbqtjm/image/upload/f_auto,q_auto/sg1ufdsz8ww9mccikyc5",
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Media",
+    required: true,
+    default: "67b4a1b9458c0cfdd0053273",
   },
   createdAt: {
     type: Date,

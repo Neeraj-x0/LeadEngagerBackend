@@ -13,8 +13,6 @@ import pino from "pino";
 import { AppError } from "../utils/errorHandler";
 
 import {
-
-  WhatsAppMessageContent,
   MediaOptions,
   createMessageQuery,
 } from "../types/WhatsApp";
@@ -23,6 +21,7 @@ import { MessageModel } from "../models/MessageModel";
 import { processMessage } from "../utils/IncomingMessage";
 import { LeadModel } from "../models/LeadModel";
 import { createMessage } from "../database/messages";
+import mongoose from "mongoose";
 const messageResponseType = proto.WebMessageInfo;
 class MessageHandler {
   private static instance: MessageHandler;
@@ -121,9 +120,9 @@ class MessageHandler {
         receiver: receiver._id
       }
 
-      console.log("query", query)
-      if (platformOptions.id) {
-        query.user = platformOptions.id;
+
+      if (platformOptions.user) {
+        query.user = platformOptions.user;
       }
       if (platformOptions.engagementID) {
         query.engagementID = platformOptions.engagementID;
@@ -143,26 +142,40 @@ class MessageHandler {
 
   async sendBulkMessages(
     phone: string[],
-    content: any,
+    content: string | Buffer,
     options: MediaOptions = {},
-    type: "text" | "image" | "video" | "audio" | "sticker" = "text",
-    platformOptions: any = {}
+    platformOptions?: { engagementID: mongoose.Types.ObjectId, user: mongoose.Types.ObjectId }
   ): Promise<Array<typeof messageResponseType>> {
     const messages = [];
     if (!this.sock) {
       throw new AppError("WhatsApp connection not established", 503);
     }
     const jids = phone.map((p) => `${validatePhone(p)}@s.whatsapp.net`);
-    console.log(`Sending ${type} messages to:`, jids);
     const sleep = (ms: number) =>
       new Promise((resolve) => setTimeout(resolve, ms));
     let messagesSinceLongDelay = 0;
     // Set initial chunk limit (random integer between 3 and 5)
+    let type: "text" | "image" | "video" | "audio" | "document" = "text";
+    if (Buffer.isBuffer(content)) {
+      const fileTypeResult = await fromBuffer(content);
+      if (fileTypeResult && fileTypeResult.mime) {
+        const category = fileTypeResult.mime.split("/")[0];
+        if (["image", "video", "audio"].includes(category)) {
+          type = category as "image" | "video" | "audio";
+        } else {
+          type = "document";
+        }
+      } else {
+        type = "document";
+      }
+    }
     let chunkLimit = Math.floor(Math.random() * (5 - 3 + 1)) + 3;
     for (let i = 0; i < jids.length; i++) {
       let messageResponse = await this.sendMessage(
         jids[i],
-        { [type]: content },
+        {
+          [type]: content,
+        },
         options,
         platformOptions
       );

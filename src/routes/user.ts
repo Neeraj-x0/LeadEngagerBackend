@@ -21,7 +21,6 @@ router.post(
       password: hashedPassword,
       phoneNumber,
       name,
-      companyLogo,
       companyName,
     });
     await user.save();

@@ -4,7 +4,6 @@ const categorySchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
-    unique: true,
   },
   description: String,
   user: {
@@ -18,7 +17,6 @@ const statusSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
-    unique: true,
   },
   description: String,
   user: {

@@ -28,6 +28,7 @@ interface SendMessageRequest {
     message?: string | Buffer;
     channels: string;
     templateId?: string;
+    poster: { title: string, note: string },
     caption?: string;
 }
 

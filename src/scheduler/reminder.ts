@@ -5,7 +5,7 @@ import { EngagementModel } from "../models/engagementModel";
 import { getLeadsByCategory } from "../database/leads";
 import { messageHandler } from "../services/WhatsApp";
 import { validatePhone } from "../utils/functions";
-import MailService from "../utils/mail";
+import MailService from "../services/Email";
 import { UserModel } from "../models/UserModel";
 import { AppError } from "../utils/errorHandler";
 import Redis from "ioredis";
@@ -30,6 +30,10 @@ interface ReminderContent {
     type: string;
     file?: any;
   };
+  engagementId: mongoose.Types.ObjectId;
+  leadId: mongoose.Types.ObjectId;
+  user: mongoose.Types.ObjectId;
+  _id: mongoose.Types.ObjectId;
 }
 
 class ReminderScheduler {
@@ -156,14 +160,15 @@ class ReminderScheduler {
     };
   }
 
-  private async sendWhatsAppMessages(reminder: any, phoneNumbers: string[]): Promise<void> {
+  private async sendWhatsAppMessages(reminder: ReminderContent, phoneNumbers: string[]): Promise<void> {
     try {
-      
+
       await messageHandler.sendBulkMessages(
         phoneNumbers,
         reminder.messageContent,
         {},
-        "text"
+        { engagementID: reminder.engagementId, user: reminder.user }
+
       );
     } catch (error) {
       console.error(`WhatsApp message error for reminder ${reminder._id}:`, error);

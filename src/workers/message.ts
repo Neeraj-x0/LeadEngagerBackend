@@ -2,8 +2,13 @@ import { sendEmail } from '../utils/engagement/functions';
 import { messageHandler } from '../services/WhatsApp';
 import { Queue, Worker, Job } from "bullmq";
 import IORedis from "ioredis";
-import MailService from '../utils/mail';
+import MailService from '../services/Email';
 import { logDebug, logError, logInfo } from '../utils/logger';
+import { PosterGenerator } from "../utils/poster";
+import mongoose from 'mongoose';
+import { LeadModel } from '../models/LeadModel';
+import Media from '../models/Media';
+import { UserModel } from '../models/UserModel';
 
 
 
@@ -22,7 +27,7 @@ connection.on('error', (error) => {
     logError('Redis', 'Connection error', error);
 });
 
-// Rest of the interfaces remain the same
+
 interface JobStatus {
     total: number;
     completed: number;
@@ -53,6 +58,19 @@ const emailQueue = new Queue('email-messages', {
         },
     },
 });
+
+
+const posterQueue = new Queue('poster-messages', {
+    connection,
+    defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+            type: 'exponential',
+            delay: 1000,
+        },
+    },
+});
+
 
 // Enhanced JobStatusManager with logging
 class JobStatusManager {
@@ -141,21 +159,22 @@ const whatsappWorker = new Worker('whatsapp-messages', async (job: Job) => {
         });
 
         try {
-            let processedMessage;
+            let processedMessage: string | Buffer;
             if (typeof message === 'string') {
                 processedMessage = message;
             } else if (Buffer.isBuffer(message)) {
                 processedMessage = message;
             } else if (message && typeof message === 'object' && 'data' in message) {
                 processedMessage = Buffer.from(message.data);
+            } else {
+                throw new Error('Invalid message format');
             }
 
             await messageHandler.sendBulkMessages(
                 batch.map(lead => lead.phone),
                 processedMessage,
                 mediaOptions,
-                mediaType,
-                { id: userId, engagementID: engagementId }
+                { user: userId, engagementID: engagementId }
             );
 
             processed += batch.length;
@@ -225,8 +244,22 @@ const whatsappWorker = new Worker('whatsapp-messages', async (job: Job) => {
     },
 });
 
+
+interface EmailJob  extends Job {
+    data: {
+        leads: any[];
+        emailSubject: string;
+        customHTML: string;
+        emailData: any;
+        type: "mailgun" | "gmail" | undefined;
+        emailBodyType: "html" | "text";
+        mailServiceData: any;
+        file?: Express.Multer.File;
+    }
+}
+
 // Enhanced email worker with detailed logging
-const emailWorker = new Worker('email-messages', async (job: Job) => {
+const emailWorker = new Worker('email-messages', async (job: EmailJob ) => {
     const { leads, emailSubject, customHTML, emailData, type, emailBodyType, mailServiceData, file } = job.data;
     let processed = 0;
     let failed = 0;
@@ -316,6 +349,112 @@ const emailWorker = new Worker('email-messages', async (job: Job) => {
     },
 });
 
+interface TextStyle {
+    fontFamily?: string;    // e.g., "Arial"
+    color?: string;         // e.g., "#000"
+}
+interface PosterJob {
+    data: {
+        posterData: {
+            logoBuffer: Buffer;
+            companyName: string;
+            name: string;
+            title: string;
+            note: string;
+            iconBuffer: Buffer;
+            backgroundBuffer?: Buffer;
+            companyNameStyle?: TextStyle;
+            greetingStyle?: TextStyle;
+            titleStyle?: TextStyle;
+            noteStyle?: TextStyle;
+            backgroundId: mongoose.Types.ObjectId
+            iconId: mongoose.Types.ObjectId
+}
+
+        whatsappData: {
+            leads: {
+                id: string;
+                name: string;
+                email: string;
+                phone: string;
+                user: mongoose.Types.ObjectId;
+                createdAt: NativeDate;
+                notes?: string | null | undefined;
+                status?: string
+                category?: string | undefined;
+                lastMessage?: mongoose.Types.ObjectId
+            }[];
+            message: string | Buffer;
+            mediaOptions: any;
+            mediaType: string;
+            userId: mongoose.Types.ObjectId;
+            engagementId: mongoose.Types.ObjectId;
+        };
+    }
+}
+
+const posterWorker = new Worker('poster-messages',
+    async (job: PosterJob) => {
+        const { posterData, whatsappData } = job.data;
+        const company = await UserModel.findById(whatsappData.userId);
+        if (!company) throw new Error('Company not found');
+        posterData.companyName = company.companyName;
+        let companyMedia = await Media.findById(company.companyLogo);
+        if (!companyMedia || !companyMedia.file) {
+            throw new Error('Company logo media file not found');
+        }
+        posterData.logoBuffer = Buffer.from(companyMedia.file);
+        const posterGenerator = new PosterGenerator();
+        const iconMedia = await Media.findById(posterData.iconId);
+        let backgroundMedia = await Media.findById(posterData.backgroundId);
+        if (!iconMedia?.file) throw new Error('Icon media file not found');
+        posterData.iconBuffer = Buffer.from(iconMedia.file);
+        if (backgroundMedia?.file) {
+            posterData.backgroundBuffer = Buffer.from(backgroundMedia.file);
+        }
+
+        for (const lead of whatsappData.leads) {
+            posterData.name = lead.name;
+            console.log(posterData);
+            const posterBuffer = await posterGenerator.generate(posterData);
+            await messageHandler.sendBulkMessages(
+                [lead.phone],
+                posterBuffer,
+                whatsappData.mediaOptions,
+                { user: whatsappData.userId, engagementID: whatsappData.engagementId }
+            );
+        }
+    }, {
+    connection,
+    concurrency: 2,
+    limiter: {
+        max: 200,
+        duration: 1000,
+    },
+})
+
+
+
+posterWorker.on('completed', async (job: Job) => {
+    logInfo('PosterWorker', `Job ${job.id} completed successfully`);
+    await Media.findByIdAndDelete(job.data.posterData.iconId);
+    await Media.findByIdAndDelete(job.data.posterData.backgroundId);
+    await statusManager.updateStatus(job.id!, { status: 'completed' });
+}
+)
+
+posterWorker.on('failed', async (job: Job | undefined, error: Error, prev: string) => {
+    if (job) {
+        logError('PosterWorker', `Job ${job.id} failed`, error);
+        await statusManager.updateStatus(job.id!, {
+            status: 'failed',
+            error: error.message
+        });
+    }
+});
+
+
+
 // Enhanced event handlers with logging
 whatsappWorker.on('completed', async (job: Job) => {
     logInfo('WhatsappWorker', `Job ${job.id} completed successfully`);
@@ -347,4 +486,7 @@ emailWorker.on('failed', async (job: Job | undefined, error: Error, prev: string
     }
 });
 
-export { whatsappQueue, emailQueue, statusManager };
+
+
+
+export { whatsappQueue, emailQueue, statusManager, posterQueue };

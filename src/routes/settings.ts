@@ -10,6 +10,7 @@ import {
   statusUpdateValidationSchema,
 } from "../validation";
 import { LeadModel } from "../models/LeadModel";
+import Media from "../models/Media";
 
 const router = Router();
 
@@ -33,7 +34,7 @@ router.get(
         name,
         phoneNumber,
         companyName,
-        companyLogo,
+        companyLogo: req.protocol + '://' + req.get('host') + "/media/" + companyLogo,
       },
     });
   })
@@ -47,6 +48,7 @@ router.get(
     res.json({ categories });
   })
 );
+
 
 router.get(
   "/statuses",
@@ -81,6 +83,31 @@ router.put(
     return res.json({ message: "Category updated successfully" });
   })
 );
+
+router.put("/profile", catchAsync(async (req: Request, res: Response) => {
+  const { email, name, phoneNumber, companyName } = req.body;
+  console.log(req.files);
+  let updatedFields: any = { email, name, phoneNumber, companyName };
+
+  if (req.files) {
+    let file;
+    if (Array.isArray(req.files)) {
+      file = req.files.length > 0 ? req.files[0] : null;
+    } else {
+      const keys = Object.keys(req.files);
+      file = keys.length > 0 && req.files[keys[0]].length > 0 ? req.files[keys[0]][0] : null;
+    }
+    if (file) {
+      const media = await Media.create({ file: file.buffer });
+      updatedFields.companyLogo = media._id;
+    }
+  }
+
+  await UserModel.updateOne({ email: req.user.email }, updatedFields);
+  return res.json({ message: "Profile updated successfully" });
+}
+)
+)
 
 router.delete(
   "/category",

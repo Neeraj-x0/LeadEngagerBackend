@@ -19,8 +19,8 @@ import ReminderRouter from "./routes/Reminder";
 import testRouter from "./routes/testRoutes";
 import statusRouter from "./routes/status";
 import generateRouter from "./routes/posterGenerator";
+import mediaRouter from "./routes/files";
 import { validateJWT } from "./middlewares/jwtValidator";
-import { fetchClient } from "./middlewares/fetchClient";
 import connectToDatabase from "./utils/database";
 import multer from "multer";
 
@@ -55,9 +55,11 @@ app.use((req, res, next) => {
   if (
     req.path === "/login" ||
     req.path === "/register" ||
-    req.path === "/test"
+    req.path === "/test" ||
+    req.path.match(/\/media\/.*/
+    )
   ) {
-    return next(); // Skip validation for login/register routes
+    return next(); // Skip validation for  routes
   }
   validateJWT(req, res, next);
 });
@@ -91,6 +93,10 @@ app.use("/api/reminder", ReminderRouter)
 app.use("/api/status", statusRouter);
 app.use("/api/generate", generateRouter);
 app.use("/test", testRouter);
+app.use("/media", mediaRouter);
+
+
+
 
 // Global Error Handler
 app.use(errorHandler);

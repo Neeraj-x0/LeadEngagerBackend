@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import { proto } from "baileys";
 import { createMessageQuery } from "../types/WhatsApp";
 import { EmailModel } from "../models/EmailModel";
+import { EngagementModel } from "../models";
 interface options {
   type: string;
   id: string;
@@ -41,7 +42,7 @@ export const createMessage = async (query: createMessageQuery) => {
     let { _id: messageID, engagementID, user, receiver, } = (await MessageModel.create(query))
     if (engagementID) {
       await LeadModel.findOneAndUpdate({ _id: query.receiver }, { lastMessage: messageID })
-      await ReplyModel.create({ messageID, lead: receiver, engagementID, user, })
+      await EngagementModel.findOneAndUpdate({ _id: engagementID }, { lastMessage: new Date() })
     } else return
   } catch (error) {
     console.error("Error creating message:", error);
@@ -56,7 +57,6 @@ export const getMessages = async (options: {
 }) => {
   try {
     const { id, engagementID, leadId } = options;
-
     // Constructing the base query...
     const query: any = { user: id };
     if (engagementID) query.engagementID = engagementID;

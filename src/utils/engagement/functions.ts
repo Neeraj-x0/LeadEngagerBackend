@@ -1,21 +1,14 @@
 import { createBulkMessages } from '../../database/messages';
 import { messageHandler } from '../../services/WhatsApp';
 import { AppError } from '../errorHandler';
-import MailService from '../mail';
+import MailService from '../../services/Email';
 import { UserRequest, MediaOptions, SendMessageRequest, EmailAttachment, ChannelResult, WhatsAppResult, EmailResult, ProcessResults } from './types';
 import mongoose, { isValidObjectId } from 'mongoose';
-
 // Utility functions for better organization
-const parseChannels = (channelsStr: string | string[]): string[] => {
-    if (Array.isArray(channelsStr)) {
-        return channelsStr.map(channel => channel.toLowerCase());
-    }
+const parseChannels = (channelsStr: string): string[] => {
 
-    const normalized = channelsStr.toLowerCase();
-    if (normalized === 'whatsapp,email' || normalized === 'email,whatsapp') {
-        return ['whatsapp', 'email'];
-    }
-    return [normalized];
+    return JSON.parse(channelsStr).map((channel: string) => channel.toLowerCase());
+
 };
 
 const validateRequest = (
@@ -70,7 +63,6 @@ const processWhatsAppChannel = async (
             phoneLeads,
             message,
             mediaOptions,
-            mediaType
         );
 
         await createBulkMessages(result, {
@@ -146,11 +138,11 @@ async function sendEmail(
     to: string[],
     subject: string,
     body: string,
-    data: { title: string; note: string, from: string, engagementID: string},
+    data: { title?: string; note?: string, from?: string, engagementID?: string },
     type: "mailgun" | "gmail" = "mailgun",
     bodyType: "html" | "text" = "text",
     mailService: MailService,
-    file?: EmailAttachment
+    file?: Express.Multer.File
 ) {
     return mailService.sendMail(
         to,

@@ -11,7 +11,7 @@ import { engagementRequest } from "../types/engagement";
 import {
   getLeadsByCategory,
 } from "../database/leads";
-import MailService from "../utils/mail";
+import MailService from "../services/Email";
 import { fetchHtml } from "../database/template";
 import {
   getMessageCount,
@@ -21,17 +21,16 @@ import { isValidObjectId } from 'mongoose';
 import { AppError, catchAsync } from "../utils/errorHandler";
 import { UserRequest, MediaOptions, SendMessageRequest, ProcessResults } from '../utils/engagement/types';
 import { parseChannels, processEmailChannel, processWhatsAppChannel, validateRequest } from "../utils/engagement/functions";
-import { emailQueue, whatsappQueue } from "../workers/message";
+import { emailQueue, posterQueue, whatsappQueue } from "../workers/message";
 import { LeadModel } from "../models/LeadModel";
 import mongoose from "mongoose";
+import Media from "../models/Media";
 const router = express.Router();
 
 // Utility function to format UTC date
 const getUTCDateTime = () => {
   return new Date().toISOString().slice(0, 19).replace("T", " ");
 };
-
-// post /engagements/:id/send - Send a message to an engagement
 
 
 router.post(
@@ -40,7 +39,7 @@ router.post(
     const { id: userId } = req.user;
     const engagementId = req.params.id;
 
-    // Validation and initial setup remain the same...
+    // Validate request and engagement existence
     validateRequest(req, engagementId);
 
     const engagement = await EngagementModel.findOne({
@@ -66,78 +65,152 @@ router.post(
       customHTML: initialHTML,
       message: initialMessage = '',
     } = req.body as SendMessageRequest;
+
     if (emailData) {
-      emailData.from = req.user.id;
+      emailData.from = userId;
       emailData.engagementID = engagementId;
     }
-    // File and message handling...
-    let message: string | Buffer = initialMessage;
-    const mediaOptions: MediaOptions = {};
 
-    if (req.file) {
-      message = req.file.buffer;
-      mediaOptions.caption = req.body.caption;
-      mediaOptions.fileName = req.file.originalname;
-      mediaOptions.mimetype = req.file.mimetype;
+    // File and message handling
+    let message: string | Buffer = initialMessage;
+    const mediaOptions: { [key: string]: any } = {};
+    let file: Express.Multer.File | undefined;
+
+    // Extract first available file from req.files if provided.
+    if (req.files) {
+      if (Array.isArray(req.files)) {
+        file = req.files[0];
+      } else {
+        // req.files is an object; get the array from the first key that has files.
+        const fileFields = Object.values(req.files);
+        if (fileFields.length > 0 && Array.isArray(fileFields[0]) && fileFields[0].length > 0) {
+          file = fileFields[0][0];
+        }
+      }
+
+      // If file exists, update message and mediaOptions accordingly.
+      if (file) {
+        message = file.buffer ? Buffer.from(file.buffer) : '';
+        mediaOptions.caption = req.body.caption;
+        mediaOptions.fileName = file.originalname;
+        mediaOptions.mimetype = file.mimetype;
+      }
     }
 
+    // Use provided template HTML if templateId is sent.
     let customHTML = initialHTML;
     if (req.body.templateId) {
       customHTML = await fetchHtml(req.body.templateId);
     }
-    console.log(req.body.channels)
 
     const channels = parseChannels(req.body.channels);
     const jobs: { channel: string; jobId: string }[] = [];
+    console.log('Channels:', channels);
 
-    // Queue jobs
+    // Process and queue jobs for each channel.
     for (const channel of channels) {
-      switch (channel) {
-        case 'whatsapp': {
-          const phoneLeads = leads.filter(lead => lead.phone);
-          if (phoneLeads.length > 0) {
+      if (channel === 'whatsapp') {
+        const phoneLeads = leads.filter((lead: any) => lead.phone);
+        if (phoneLeads.length > 0) {
+          if (req.body.poster) {
+            let posterDataInput;
+            try {
+              // If poster data is a JSON string, parse it.
+              posterDataInput = typeof req.body.poster === 'string' ? JSON.parse(req.body.poster) : req.body.poster;
+            } catch (err) {
+              throw new AppError('Invalid poster data format', 400);
+            }
+            const { title, note } = posterDataInput;
+            const whatsappData = {
+              leads: phoneLeads,
+              message,
+              mediaOptions,
+              mediaType,
+              userId,
+              engagementId,
+            };
 
+            // Extract additional files for the poster (icon and background).
+            let iconBuffer: Buffer | null = null;
+            let backgroundBuffer: Buffer | null = null;
+            let filesArray: Express.Multer.File[] = [];
+            if (req.files) {
+              if (Array.isArray(req.files)) {
+                filesArray = req.files;
+              } else {
+                // Flatten file arrays from req.files object.
+                filesArray = Object.values(req.files).flat();
+              }
+            }
+            const iconFile = filesArray.find(file => file.fieldname === 'icon');
+            const backgroundFile = filesArray.find(file => file.fieldname === 'background');
+
+            if (iconFile && iconFile.buffer) {
+              iconBuffer = Buffer.from(iconFile.buffer);
+            }
+            if (backgroundFile && backgroundFile.buffer) {
+              backgroundBuffer = Buffer.from(backgroundFile.buffer);
+            }
+            if (!iconBuffer) {
+              throw new AppError('Poster icon is required', 400);
+            }
+
+            const iconId = await Media.create({ file: iconBuffer }).then(media => media._id);
+            let backgroundId;
+            if (backgroundBuffer) {
+              backgroundId = await Media.create({ file: backgroundBuffer }).then(media => media._id);
+            }
+            const posterData = {
+              title,
+              note,
+              iconId,
+              ...(backgroundId && { backgroundId }),
+            };
+
+            const job = await posterQueue.add('poster-messages', {
+              whatsappData,
+              posterData,
+            });
+            if (job.id) {
+              jobs.push({ channel: 'whatsapp', jobId: job.id });
+            }
+          } else {
             const job = await whatsappQueue.add('whatsapp-messages', {
               leads: phoneLeads,
               message,
               mediaOptions,
               mediaType,
               userId,
-              engagementId
+              engagementId,
             });
             if (job.id) {
               jobs.push({ channel: 'whatsapp', jobId: job.id });
             }
           }
-          break;
         }
-        case 'email': {
-          const emailLeads = leads.filter(lead => lead.email);
-          const mailServiceData = {
-            email: req.user.email,
-            name: req.user.name,
-          };
-          if (emailLeads.length > 0) {
-            const job = await emailQueue.add('email-messages', {
-              leads: emailLeads,
-              emailSubject,
-              customHTML: customHTML ?? '',
-              emailData,
-              type,
-              emailBodyType,
-              mailServiceData,
-              file: req.file
-            });
-            if (job.id) {
-              jobs.push({ channel: 'email', jobId: job.id });
-            }
+      } else if (channel === 'email') {
+        const emailLeads = leads.filter((lead: any) => lead.email);
+        const mailServiceData = {
+          email: req.user.email,
+          name: req.user.name,
+        };
+        if (emailLeads.length > 0) {
+          const job = await emailQueue.add('email-messages', {
+            leads: emailLeads,
+            emailSubject,
+            customHTML: customHTML ?? '',
+            emailData,
+            type,
+            emailBodyType,
+            mailServiceData,
+            file,
+          });
+          if (job.id) {
+            jobs.push({ channel: 'email', jobId: job.id });
           }
-          break;
         }
       }
     }
-
-
 
     res.status(200).json({
       status: 'success',
@@ -152,6 +225,7 @@ router.post(
     });
   })
 );
+
 // POST /engagements - Create a new engagement
 router.post(
   "/",
@@ -482,18 +556,25 @@ router.get(
         select: 'name email phone'
       })
       .sort({ replyDate: -1 });
+    let leadinfo
 
 
 
     // Transform the data for frontend consumption
     const formattedReplies = replies.map(reply => ({
+
       id: reply._id,
       messageId: reply.messageID._id,
-      leadInfo: {
+      leadInfo: reply.lead ? {
         id: reply.lead._id,
         name: reply.lead.name,
         email: reply.lead.email,
         phone: reply.lead.phone
+      } : {
+        id: "",
+        name: "",
+        email: "",
+        phone: ""
       },
       timestamp: reply.replyDate,
       source: "whatsapp",

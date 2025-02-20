@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 
 interface Request extends express.Request {
     query: {
@@ -13,7 +14,7 @@ interface Request extends express.Request {
     name: string;
     phoneNumber: string;
     companyName: string;
-    companyLogo:string
+    companyLogo:mongoose.Types.ObjectId
     }
     lead: {
         id: string;

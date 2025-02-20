@@ -1,5 +1,5 @@
 import { z } from "zod";
-import MailService from "../utils/mail";
+import MailService from "../services/Email";
 import { messageHandler } from "../services/WhatsApp";
 import { validatePhone } from "../utils/functions";
 
@@ -188,7 +188,6 @@ async function sendBulkMessages(
             phones,
             file.buffer,
             { caption: body },
-            mime as "image" | "video" | "audio" | "sticker"
           );
         } else {
           await messageHandler.sendBulkMessages(phones, body);
@@ -252,7 +251,6 @@ async function sendBulkMessages(
               phones,
               file.buffer,
               { caption: body },
-              mime as "image" | "video" | "audio" | "sticker"
             );
           } else {
             await messageHandler.sendBulkMessages(phones, body);

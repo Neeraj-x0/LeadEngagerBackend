@@ -40,14 +40,22 @@ interface MediaOptions {
 
 
 const validateCategory = (category: string, message: any, emailSubject: string, file: Express.Multer.File | undefined) => {
-  if (category === "both") {
-    if (!file && !message) throw new AppError("WhatsApp message content or file is required.", 400);
-    if (!emailSubject) throw new AppError("Email subject is required.", 400);
-  } else if (category === "whatsapp" && !message && !file) {
-    throw new AppError("WhatsApp message content or file is required for category 'whatsapp'.", 400);
-  } else if (category === "email" && !emailSubject) {
-    throw new AppError("Email subject is required for category 'email'.", 400);
-  } else if (!["whatsapp", "email", "both"].includes(category)) {
+  if (category === "email") {
+    if (!emailSubject) {
+      throw new AppError("Email subject is required for category 'email'.", 400);
+    }
+  } else if (category === "whatsapp") {
+    if (!file && !message) {
+      throw new AppError("Either a file or WhatsApp message content is required for category 'whatsapp'.", 400);
+    }
+  } else if (category === "both") {
+    if (!file && !message) {
+      throw new AppError("Either a file or WhatsApp message content is required for category 'both'.", 400);
+    }
+    if (!emailSubject) {
+      throw new AppError("Email subject is required for category 'both'.", 400);
+    }
+  } else {
     throw new AppError("Invalid category provided. Expected 'whatsapp', 'email', or 'both'.", 400);
   }
 };
@@ -126,19 +134,33 @@ router.post("/", catchAsync(async (req: Request, res: Response) => {
 
   console.log("req.body", req.body);
 
-  const emailContent = rawEmailContent ? JSON.parse(rawEmailContent) : {};
+  const emailContent = typeof rawEmailContent !== 'object' ? JSON.parse(rawEmailContent) : rawEmailContent;
+  
+  let file
+  if (req.files) {
+    if (Array.isArray(req.files) && req.files.length > 0) {
+      file = req.files[0];
+    } else {
+      const filesList: Express.Multer.File[] = Object.values(req.files).flat();
+      if (filesList.length > 0) {
+        file = filesList[0];
+      }
+    }
+  }
 
+
+  console.log("file", file);
 
   // Validate category requirements
-  validateCategory(category, messageContent.message, emailContent.emailSubject, req.file);
+  validateCategory(category, messageContent.message, emailContent.emailSubject, file);
 
   // Parse content based on category
   const messageContentParsed = (category === "whatsapp" || category === "both")
-    ? parseMessageContent(req.file, messageContent, mediaType, caption)
+    ? parseMessageContent(file, messageContent, mediaType, caption)
     : null;
 
   const emailContentParsed = (category === "email" || category === "both")
-    ? await parseEmailContent(emailContent, req.file, type)
+    ? await parseEmailContent(emailContent, file, type)
     : null;
 
   // Create and schedule reminder

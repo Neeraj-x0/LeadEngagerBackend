@@ -2,12 +2,13 @@ import FormData from "form-data";
 import Mailgun, { MailgunMessageData } from "mailgun.js";
 import nodemailer from "nodemailer";
 import mongoose from "mongoose";
-import { AppError } from "./errorHandler";
+import { AppError } from "../utils/errorHandler";
 import { EmailModel } from "../models/EmailModel";
 import fileType from "file-type";
-import { renderBody } from "./functions";
+import { renderBody } from "../utils/functions";
 import { LeadModel } from "../models/LeadModel";
-import { logError } from "./logger";
+import { logError } from "../utils/logger";
+import { EngagementModel } from "../models";
 
 // Define clear interfaces for better type safety
 interface UserData {
@@ -15,11 +16,7 @@ interface UserData {
   name: string;
 }
 
-interface EmailAttachment {
-  buffer: Buffer;
-  size: number;
-  originalname: string;
-}
+
 
 interface SendMailResponse {
   id: string;
@@ -53,7 +50,9 @@ class MailService {
     });
 
     this.domain = "mail.neerajx0.xyz";
-    this.defaultFrom = `${userData.name} <${userData.email}>`;
+    const domainParts = this.domain.split(".");
+    const baseDomain = domainParts.length > 1 ? domainParts.slice(-2).join(".") : this.domain;
+    this.defaultFrom = `${userData.name} <marketing@${baseDomain}>`;
     this.transporter = this.createNodemailerTransport();
   }
 
@@ -71,7 +70,6 @@ class MailService {
       throw new AppError("Gmail credentials not found", 500);
     }
   }
-
   private createNodemailerTransport() {
     return nodemailer.createTransport({
       service: "gmail",
@@ -98,7 +96,7 @@ class MailService {
     body: string,
     data: Record<string, any>,
     bodyType: "html" | "text",
-    file?: EmailAttachment
+    file?: Express.Multer.File
   ): Promise<SendMailResponse> {
     try {
       console.log("Sending via Mailgun");
@@ -243,9 +241,14 @@ class MailService {
     data: Record<string, any>,
     type: "mailgun" | "gmail" = "mailgun",
     bodyType: "html" | "text" = "html",
-    file?: EmailAttachment
+    file?: Express.Multer.File
   ): Promise<SendMailResponse> {
-    console.log("Sending Mail");
+    if (file) {
+      console.log("Sending Mail with attachment");
+      console.log(file);
+    } else {
+      console.log("Sending Mail");
+    }
     return type === "gmail"
       ? this.sendViaGmail(email, subject, body, data, bodyType, file?.buffer)
       : this.sendViaMailgun(email, subject, body, data, bodyType, file);
@@ -270,10 +273,13 @@ class MailService {
         to: toEmail,
         receiver: leadMap.get(toEmail) || null,
         user: data.from,
-        engagementID : data.engagementID,
+        engagementID: data.engagementID,
         timestamp: new Date()
       }));
 
+      if (data.engagementID) {
+        await EngagementModel.findOneAndUpdate({ _id: data.engagementID }, { lastMessage: new Date() })
+      }
       const newEmails = await EmailModel.insertMany(emailsToSave, { ordered: false });
       return {
         success: true,

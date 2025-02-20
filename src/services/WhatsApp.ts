@@ -195,7 +195,6 @@ class MessageHandler {
         if (!iconMedia || !iconMedia.file) {
           throw new Error('Icon media file not found');
         }
-
         if (!companyMedia || !companyMedia.file) {
           throw new Error('Company logo media file not found');
         }

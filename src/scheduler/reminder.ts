@@ -236,7 +236,7 @@ class ReminderScheduler {
       return;
     }
 
-    const now = moment().toDate();
+    const now = new Date();
     const delay = reminder.scheduledAt < now ? 0 :
       reminder.scheduledAt.getTime() - now.getTime();
 

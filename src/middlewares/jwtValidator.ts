@@ -19,7 +19,7 @@ export const validateJWT = async (
   next: NextFunction
 ) => {
   // Only validate JWT if the request path starts with "/api".
-  if (!req.path.startsWith("/api")) {
+  if (!req.path.includes("/api")) {
     return next();
   }
 

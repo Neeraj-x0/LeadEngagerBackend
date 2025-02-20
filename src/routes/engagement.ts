@@ -25,7 +25,9 @@ import { emailQueue, posterQueue, whatsappQueue } from "../workers/message";
 import { LeadModel } from "../models/LeadModel";
 import mongoose from "mongoose";
 import Media from "../models/Media";
+import { log } from "../utils/logger";
 const router = express.Router();
+
 
 // Utility function to format UTC date
 const getUTCDateTime = () => {
@@ -39,6 +41,8 @@ router.post(
     const { id: userId } = req.user;
     const engagementId = req.params.id;
 
+    log(`User ${userId} initiated sending message for engagement ${engagementId}`);
+
     // Validate request and engagement existence
     validateRequest(req, engagementId);
 
@@ -48,13 +52,16 @@ router.post(
     });
 
     if (!engagement) {
+      log(`Engagement ${engagementId} not found for user ${userId}`);
       throw new AppError('Engagement not found', 404);
     }
+    log(`Engagement ${engagementId} found for user ${userId}`);
 
     const leads = await getLeadsByCategory(
       engagement.category || 'Uncategorized',
       userId
     );
+    log(`Found ${leads.length} leads for engagement ${engagementId}`);
 
     const {
       type,
@@ -94,6 +101,7 @@ router.post(
         mediaOptions.caption = req.body.caption;
         mediaOptions.fileName = file.originalname;
         mediaOptions.mimetype = file.mimetype;
+        log(`File found and processed: ${file.originalname}`);
       }
     }
 
@@ -101,15 +109,17 @@ router.post(
     let customHTML = initialHTML;
     if (req.body.templateId) {
       customHTML = await fetchHtml(req.body.templateId);
+      log(`Custom HTML fetched for template ${req.body.templateId}`);
     }
 
     const channels = parseChannels(req.body.channels);
+    log(`Parsed channels: ${channels.join(', ')}`);
     const jobs: { channel: string; jobId: string }[] = [];
-    console.log('Channels:', channels);
 
     // Process and queue jobs for each channel.
     for (const channel of channels) {
       if (channel === 'whatsapp') {
+        log('Processing whatsapp channel');
         const phoneLeads = leads.filter((lead: any) => lead.phone);
         if (phoneLeads.length > 0) {
           if (req.body.poster) {
@@ -117,7 +127,9 @@ router.post(
             try {
               // If poster data is a JSON string, parse it.
               posterDataInput = typeof req.body.poster === 'string' ? JSON.parse(req.body.poster) : req.body.poster;
+              log(`Poster data parsed successfully`);
             } catch (err) {
+              log(`Invalid poster data format`);
               throw new AppError('Invalid poster data format', 400);
             }
             const { title, note } = posterDataInput;
@@ -147,18 +159,23 @@ router.post(
 
             if (iconFile && iconFile.buffer) {
               iconBuffer = Buffer.from(iconFile.buffer);
+              log(`Poster icon file processed: ${iconFile.originalname}`);
             }
             if (backgroundFile && backgroundFile.buffer) {
               backgroundBuffer = Buffer.from(backgroundFile.buffer);
+              log(`Poster background file processed: ${backgroundFile.originalname}`);
             }
             if (!iconBuffer) {
+              log('Poster icon is missing');
               throw new AppError('Poster icon is required', 400);
             }
 
             const iconId = await Media.create({ file: iconBuffer }).then(media => media._id);
+            log(`Poster icon stored with id: ${iconId}`);
             let backgroundId;
             if (backgroundBuffer) {
               backgroundId = await Media.create({ file: backgroundBuffer }).then(media => media._id);
+              log(`Poster background stored with id: ${backgroundId}`);
             }
             const posterData = {
               title,
@@ -171,7 +188,9 @@ router.post(
               whatsappData,
               posterData,
             });
+
             if (job.id) {
+              log(`WhatsApp poster job added with id: ${job.id}`);
               jobs.push({ channel: 'whatsapp', jobId: job.id });
             }
           } else {
@@ -184,11 +203,15 @@ router.post(
               engagementId,
             });
             if (job.id) {
+              log(`WhatsApp job added with id: ${job.id}`);
               jobs.push({ channel: 'whatsapp', jobId: job.id });
             }
           }
+        } else {
+          log('No phone leads available for WhatsApp channel');
         }
       } else if (channel === 'email') {
+        log('Processing email channel');
         const emailLeads = leads.filter((lead: any) => lead.email);
         const mailServiceData = {
           email: req.user.email,
@@ -206,12 +229,16 @@ router.post(
             file,
           });
           if (job.id) {
+            log(`Email job added with id: ${job.id}`);
             jobs.push({ channel: 'email', jobId: job.id });
           }
+        } else {
+          log('No email leads available for Email channel');
         }
       }
     }
 
+    log(`Message sending initiated for engagement ${engagementId} with ${jobs.length} jobs queued`);
     res.status(200).json({
       status: 'success',
       message: 'Message sending initiated',

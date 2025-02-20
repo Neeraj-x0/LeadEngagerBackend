@@ -2,6 +2,11 @@ const logInfo = (context: string, message: string, data?: any) => {
     console.log(`[${new Date().toISOString()}] [INFO] [${context}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
 };
 
+const log = ( message: string) => {
+    console.log(`[${new Date().toISOString()}] ${message}`);
+};
+
+
 const logError = (context: string, message: string, error: any) => {
     console.error(
         `[${new Date().toISOString()}] [ERROR] [${context}] ${message}`,
@@ -21,4 +26,4 @@ const logDebug = (context: string, message: string, data?: any) => {
 };
 
 
-export { logInfo, logError, logWarning, logDebug };
+export { logInfo, logError, logWarning, logDebug ,log};

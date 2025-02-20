@@ -231,21 +231,24 @@ class ReminderScheduler {
 
 
 
-  public scheduleReminder = async (reminder: any): Promise<void> => {
+ public scheduleReminder = async (reminder: any): Promise<void> => {
     if (reminder.notificationSent) {
-      console.log(`Reminder ${reminder._id} already executed.`);
-      return;
+        console.log(`Reminder ${reminder._id} already executed.`);
+        return;
     }
 
-    // Convert to IST and keep everything in milliseconds
-    const now = moment().tz("Asia/Kolkata");
-    const scheduledAt = moment(reminder.scheduledAt).tz("Asia/Kolkata");
-    const delay = scheduledAt.isBefore(now) ? 0 : scheduledAt.diff(now, "milliseconds");
+    // Create proper Date object with offset
+    const currentDate = new Date();
+    const utcNow = new Date(currentDate.getTime() + (5.5 * 60 * 60 * 1000));
+    const scheduledAt = moment.utc(reminder.scheduledAt);
+
+
+    // Compare using the correctly constructed UTC time
+    const delay = scheduledAt.isSameOrBefore(utcNow) ? 0 : scheduledAt.diff(utcNow);
 
     await this.reminderQueue.add("execute", { reminder }, { delay });
     await ReminderModel.findByIdAndUpdate(reminder._id, { isScheduled: true });
-  };
-
+};
 
 
   public loadAndScheduleReminders = async (): Promise<void> => {

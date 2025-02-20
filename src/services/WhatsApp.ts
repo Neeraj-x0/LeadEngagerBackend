@@ -93,6 +93,7 @@ class MessageHandler {
       throw new AppError("WhatsApp connection not established", 503);
     }
 
+    console.log({ jid, content, options, platformOptions });
     try {
       const result = await this.sock.sendMessage(jid, {
         ...content,

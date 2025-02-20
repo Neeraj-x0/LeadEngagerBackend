@@ -1,11 +1,13 @@
+import mongoose from "mongoose";
 import { LeadModel } from "../models/LeadModel";
 import { CategoryModel } from "../models/Settings";
 import { AppError } from "../utils/errorHandler";
 import crypto from "crypto";
+import { EngagementModel } from "../models";
 
 async function createLead(lead: any, user: string) {
   try {
-    
+
     // Generate a unique 6-digit ID based on user data
     let id = generateUniqueId(lead);
 
@@ -185,9 +187,24 @@ async function bulkDeleteLeads(idArray: string[], user: string) {
   }
 }
 
+async function getLeadByEngagementID(id: mongoose.Types.ObjectId) {
+  try {
+    const engagement = await EngagementModel.findById(id)
+
+    return await LeadModel.find({ category: engagement?.category, user: engagement?.user })
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new AppError(error.message, 400);
+    } else {
+      throw new AppError("An unknown error occurred", 400);
+    }
+  }
+}
+
 export {
   createLead,
   getLeads,
+  getLeadByEngagementID,
   getLeadById,
   updateCategory,
   getLeadsByCategory,

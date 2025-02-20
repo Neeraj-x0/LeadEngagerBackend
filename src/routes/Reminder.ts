@@ -6,6 +6,15 @@ import { Request } from "../types";
 import { convertToTimezone } from "../utils/functions";
 import { isValidObjectId } from "mongoose";
 import { fetchHtml } from "../database/template";
+import { SendMessageRequest, UserRequest } from "../utils/engagement/types";
+import { log } from "../utils/logger";
+import { parseChannels, validateRequest } from "../utils/engagement/functions";
+import { EngagementModel } from "../models";
+import { getLeadsByCategory } from "../database/leads";
+import Media from "../models/Media";
+import { emailQueue, posterQueue, whatsappQueue } from "../workers/message";
+import { parseRequest } from "../utils/reminder/request-parser";
+import { parseEmailContent, parseWhatsAppContent, validateContent } from "../utils/reminder/function";
 
 const router = express.Router();
 const scheduler = ReminderScheduler;
@@ -37,149 +46,55 @@ interface MediaOptions {
   }
 })();
 
+router.post("/:id", catchAsync(async (req: Request, res: Response) => {
+  // Parse the request using the provided parsing logic
+  const parsedRequest = parseRequest(req);
+  const { reminder, whatsapp, email, poster } = parsedRequest.body;
 
-
-const validateCategory = (category: string, message: any, emailSubject: string, file: Express.Multer.File | undefined) => {
-  if (category === "email") {
-    if (!emailSubject) {
-      throw new AppError("Email subject is required for category 'email'.", 400);
-    }
-  } else if (category === "whatsapp") {
-    if (!file && !message) {
-      throw new AppError("Either a file or WhatsApp message content is required for category 'whatsapp'.", 400);
-    }
-  } else if (category === "both") {
-    if (!file && !message) {
-      throw new AppError("Either a file or WhatsApp message content is required for category 'both'.", 400);
-    }
-    if (!emailSubject) {
-      throw new AppError("Email subject is required for category 'both'.", 400);
-    }
-  } else {
-    throw new AppError("Invalid category provided. Expected 'whatsapp', 'email', or 'both'.", 400);
-  }
-};
-
-const parseMessageContent = (
-  file: Express.Multer.File | undefined,
-  messageContent: any,
-  mediaType: string,
-  caption: string
-) => {
-  let message = messageContent.message;
-  let mediaOptions: Partial<MediaOptions> = {};
-
-  if (file) {
-    message = file.buffer;
-    mediaOptions = {
-      caption: caption || "",
-      fileName: file.originalname,
-      mimetype: file.mimetype,
-    };
-  }
-
-  return {
-    mediaType,
-    message,
-    caption: caption || "",
-    mediaOptions,
-  };
-};
-
-const parseEmailContent = async (
-  emailContent: EmailContent,
-  file: Express.Multer.File | undefined,
-  type: string
-) => {
-  let customHTML = emailContent.customHTML;
-
-  if (emailContent.templateId) {
-    customHTML = (await fetchHtml(emailContent.templateId)) ?? "";
-    if (!customHTML) {
-      throw new AppError(
-        "Email template is required either as customHTML or via a valid templateId.",
-        400
-      );
-    }
-  }
-
-  return {
-    type,
-    emailSubject: emailContent.emailSubject,
-    emailTemplate: emailContent.emailTemplate || "",
-    emailBodyType: emailContent.emailBodyType,
-    emailData: emailContent.emailData,
-    customHTML,
-    templateId: emailContent.templateId || "",
-    file
-  };
-};
-
-// Route handlers
-router.post("/", catchAsync(async (req: Request, res: Response) => {
-  const {
-    leadId,
-    engagementId,
-    title,
-    description,
-    scheduledAt,
-    frequency,
-    category,
-    mediaType,
-    messageContent,
-    caption,
-    type,
-    emailContent: rawEmailContent,
-  } = req.body;
-
-  console.log("req.body", req.body);
-
-  const emailContent = typeof rawEmailContent !== 'object' ? JSON.parse(rawEmailContent) : rawEmailContent;
-  
-  let file
+  // Get the file from the parsed request
+  let file: Express.Multer.File | undefined;
   if (req.files) {
-    if (Array.isArray(req.files) && req.files.length > 0) {
-      file = req.files[0];
+    if (Array.isArray(req.files)) {
+      file = req.files.find(f => f.fieldname === "file");
     } else {
-      const filesList: Express.Multer.File[] = Object.values(req.files).flat();
-      if (filesList.length > 0) {
-        file = filesList[0];
-      }
+      const fileArray = Object.values(req.files).flat();
+      file = fileArray.find(f => f.fieldname === "file");
     }
   }
-
-
-  console.log("file", file);
-
-  // Validate category requirements
-  validateCategory(category, messageContent.message, emailContent.emailSubject, file);
-
-  // Parse content based on category
+  // Determine the category based on provided content
+  const category = req.body.category
+  // Parse WhatsApp content if applicable
   const messageContentParsed = (category === "whatsapp" || category === "both")
-    ? parseMessageContent(file, messageContent, mediaType, caption)
+    ? parseWhatsAppContent(whatsapp, file)
     : null;
 
+  // Parse email content if applicable
   const emailContentParsed = (category === "email" || category === "both")
-    ? await parseEmailContent(emailContent, file, type)
+    ? await parseEmailContent(email, file)
     : null;
 
-  // Create and schedule reminder
-  const reminder = await ReminderModel.create({
-    leadId,
-    engagementId,
-    title,
-    description,
-    scheduledAt: convertToTimezone(scheduledAt),
-    frequency,
+  // Create reminder document
+  const reminderDoc = await ReminderModel.create({
+    leadId: parsedRequest.params.id.length < 8 ? parsedRequest.params.id : null,
+    engagementId: parsedRequest.params.id.length >= 8 ? parsedRequest.params.id : null,
+    title: reminder.title,
+    description: reminder.description,
+    scheduledAt: convertToTimezone(new Date(reminder.scheduledAt)),
+    frequency: reminder.frequency,
     category,
     messageContent: messageContentParsed,
     emailContent: emailContentParsed,
-    user: req.user?.id,
+    poster: poster,
+    user: parsedRequest.user._id,
   });
 
-  await scheduler.scheduleReminder(reminder);
+  // Schedule the reminder
+  await scheduler.scheduleReminder(reminderDoc);
 
-  res.status(201).json({ status: "success", data: reminder });
+  res.status(201).json({
+    status: "success",
+    data: reminderDoc
+  });
 }));
 
 router.get("/", catchAsync(async (req: Request, res: Response) => {

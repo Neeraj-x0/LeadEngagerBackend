@@ -77,9 +77,9 @@ router.put(
   validate(statusUpdateValidationSchema),
   catchAsync(async (req: Request, res: Response) => {
     const { name, newName } = req.body;
-    console.log(name, newName);
-    await LeadModel.updateMany({ category: name }, { category: newName });
-    await CategoryModel.updateOne({ name }, { name: newName });
+    const user = req.user.id;
+    await LeadModel.updateMany({ category: name, user }, { category: newName });
+    await CategoryModel.updateOne({ name, user }, { name: newName });
     return res.json({ message: "Category updated successfully" });
   })
 );

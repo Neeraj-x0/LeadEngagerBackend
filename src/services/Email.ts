@@ -165,6 +165,7 @@ class MailService {
     fileBuffer?: Buffer
   ): Promise<SendMailResponse> {
     try {
+
       console.log("Sending via Gmail");
       const mailOptions: Record<string, any> = {
         from: `Razominer <${process.env.NODE_USER}>`,
@@ -241,10 +242,12 @@ class MailService {
     file?: Express.Multer.File
   ): Promise<SendMailResponse> {
     if (file) {
+
       console.log("Sending Mail with attachment");
       console.log(file);
     } else {
       console.log("Sending Mail");
+      console.log({ email, subject, body, data, type, bodyType });
     }
     return type === "gmail"
       ? this.sendViaGmail(email, subject, body, data, bodyType, file?.buffer)

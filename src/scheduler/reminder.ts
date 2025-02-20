@@ -162,11 +162,15 @@ class ReminderScheduler {
 
   private async sendWhatsAppMessages(reminder: ReminderContent, phoneNumbers: string[]): Promise<void> {
     try {
-
+      console.log(reminder.messageContent);
+      const content = reminder.messageContent.message?.data ?
+        Buffer.from(reminder.messageContent.message.data) :
+        reminder.messageContent.message;
+      console.log(content);
       await messageHandler.sendBulkMessages(
         phoneNumbers,
-        reminder.messageContent,
-        {},
+        content,
+        { caption: reminder.messageContent.caption },
         { engagementID: reminder.engagementId, user: reminder.user }
 
       );
@@ -181,7 +185,7 @@ class ReminderScheduler {
       const mailService = new MailService(userData);
 
       const { emailSubject, emailBodyType, customHTML, type, file } = reminder.emailContent;
-
+console.log({ emailAddresses, emailSubject, customHTML, type, emailBodyType, file });
       await mailService.sendMail(
         emailAddresses,
         emailSubject,

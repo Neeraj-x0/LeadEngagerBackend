@@ -20,6 +20,7 @@ import testRouter from "./routes/testRoutes";
 import statusRouter from "./routes/status";
 import generateRouter from "./routes/posterGenerator";
 import mediaRouter from "./routes/files";
+import analyticsRouter from "./routes/Dashboard";
 import { validateJWT } from "./middlewares/jwtValidator";
 import connectToDatabase from "./utils/database";
 import multer from "multer";
@@ -94,6 +95,7 @@ app.use("/api/status", statusRouter);
 app.use("/api/generate", generateRouter);
 app.use("/test", testRouter);
 app.use("/media", mediaRouter);
+app.use("/api/analytics", analyticsRouter);
 
 
 

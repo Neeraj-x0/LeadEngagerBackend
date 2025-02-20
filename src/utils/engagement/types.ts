@@ -12,11 +12,6 @@ interface UserRequest extends Request {
     };
 }
 
-interface MediaOptions {
-    caption?: string;
-    fileName?: string;
-    mimetype?: string;
-}
 
 interface SendMessageRequest {
     type?: "mailgun" | "gmail";
@@ -58,6 +53,33 @@ interface EmailAttachment {
 }
 
 
+export interface ProcessedJob {
+  channel: string;
+  jobId: string;
+  statusEndpoint: string;
+}
 
+export interface MediaOptions {
+  caption?: string;
+  fileName?: string;
+  mimetype?: string;
+  [key: string]: any;
+}
 
-export { UserRequest, MediaOptions, SendMessageRequest, ChannelResult, WhatsAppResult, EmailResult, ProcessResults, EmailAttachment };
+export interface PosterData {
+  title: string;
+  note: string;
+  iconId: string;
+  backgroundId?: string;
+}
+
+export interface WhatsAppData {
+  leads: any[];
+  message: string | Buffer;
+  mediaOptions: MediaOptions;
+  mediaType: string;
+  userId: string;
+  engagementId: string;
+}
+
+export { UserRequest,  SendMessageRequest, ChannelResult, WhatsAppResult, EmailResult, ProcessResults, EmailAttachment };

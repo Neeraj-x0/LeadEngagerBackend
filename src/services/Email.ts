@@ -38,17 +38,14 @@ class MailService {
   private readonly transporter;
   private static readonly MAX_FILE_SIZE_MB = 25;
   private static readonly EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
   constructor(userData: UserData) {
     this.validateUserData(userData);
     this.validateEnvironment();
-
     const mailgun = new Mailgun(FormData);
     this.mg = mailgun.client({
       username: "api",
       key: process.env.MAILGUN_API_KEY!
     });
-
     this.domain = "mail.neerajx0.xyz";
     const domainParts = this.domain.split(".");
     const baseDomain = domainParts.length > 1 ? domainParts.slice(-2).join(".") : this.domain;

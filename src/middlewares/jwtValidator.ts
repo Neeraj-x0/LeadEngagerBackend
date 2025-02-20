@@ -17,30 +17,34 @@ export const validateJWT = async (
   res: Response,
   next: NextFunction
 ) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return next(new AppError("Unauthorized: No token provided", 401));
-  }
 
-  const clientId = req.headers["client-id"];
+  // Skip authentication if the request path matches the unauthenticated media route
+  if (req.path.includes("/media")) {
+    return next();
+  } else {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.log("Unauthorized: No token provided");
+      return next(new AppError("Unauthorized: No token provided", 401));
+    }
 
-  const token = authHeader.split(" ")[1];
+    const clientId = req.headers["client-id"];
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as Document & typeof UserModel;
+      const user = await UserModel.findById(decoded.id);
+      if (!user) {
+        return next(new AppError("Unauthorized: Invalid token", 401));
+      }
+      req.user = user;
 
-  try {
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as Document & typeof UserModel;
-    const user = await UserModel.findById(decoded.id)
-    if (!user) {
+      if (clientId) {
+        const clientIdStr = Array.isArray(clientId) ? clientId[0] : clientId;
+        req.lead = await getLeadById(clientIdStr, (req.user as JwtPayload).id);
+      }
+      next();
+    } catch (error) {
       return next(new AppError("Unauthorized: Invalid token", 401));
     }
-    req.user = user;
-
-    if (clientId) {
-      const clientIdStr = Array.isArray(clientId) ? clientId[0] : clientId;
-      req.lead = await getLeadById(clientIdStr, (req.user as JwtPayload).id);
-    }
-    next();
-  } catch (error) {
-    return next(new AppError("Unauthorized: Invalid token", 401));
   }
 };

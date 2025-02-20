@@ -88,14 +88,14 @@ router.post("/:id", catchAsync(async (req: Request, res: Response) => {
   if (backgroundBuffer) {
     backgroundID = (await Media.create({ file: backgroundBuffer }))._id;
   }
-console.log(iconID, backgroundID)
+  console.log(iconID, backgroundID)
   // Create reminder document
   const reminderDoc = await ReminderModel.create({
     leadId: parsedRequest.params.id.length < 8 ? parsedRequest.params.id : null,
     engagementId: parsedRequest.params.id.length >= 8 ? parsedRequest.params.id : null,
     title: reminder.title,
     description: reminder.description,
-    scheduledAt: convertToTimezone(new Date(reminder.scheduledAt)),
+    scheduledAt: reminder.scheduledAt,
     frequency: reminder.frequency,
     category,
     messageContent: messageContentParsed,

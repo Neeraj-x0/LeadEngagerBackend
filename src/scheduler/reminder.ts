@@ -12,7 +12,7 @@ import Redis from "ioredis";
 import moment from "moment-timezone";
 import mongoose from "mongoose";
 
-// Set default timezone
+
 moment.tz.setDefault("Asia/Kolkata");
 
 // Types for better type safety and clarity
@@ -83,8 +83,7 @@ class ReminderScheduler {
 
   private async processReminder(job: Job): Promise<void> {
     const reminder = job.data.reminder;
-    console.log(`Processing reminder ${reminder._id} [${reminder.title}]`);
-
+    console.log(`Processing reminder ${reminder._id} [${reminder.title}]`)
     try {
       const recipients = await this.getRecipients(reminder);
       await this.sendNotifications(reminder, recipients);
@@ -183,7 +182,7 @@ class ReminderScheduler {
       console.error(`WhatsApp message error for reminder ${reminder._id}:`, error);
     }
   }
- 
+
   private async sendEmails(reminder: any, emailAddresses: string[]): Promise<void> {
     try {
       const userData = await this.getUserData(reminder.user);
@@ -230,19 +229,24 @@ class ReminderScheduler {
     });
   }
 
+
+
   public scheduleReminder = async (reminder: any): Promise<void> => {
     if (reminder.notificationSent) {
       console.log(`Reminder ${reminder._id} already executed.`);
       return;
     }
 
-    const now = new Date();
-    const delay = reminder.scheduledAt < now ? 0 :
-      reminder.scheduledAt.getTime() - now.getTime();
+    // Convert to IST and keep everything in milliseconds
+    const now = moment().tz("Asia/Kolkata");
+    const scheduledAt = moment(reminder.scheduledAt).tz("Asia/Kolkata");
+    const delay = scheduledAt.isBefore(now) ? 0 : scheduledAt.diff(now, "milliseconds");
 
     await this.reminderQueue.add("execute", { reminder }, { delay });
     await ReminderModel.findByIdAndUpdate(reminder._id, { isScheduled: true });
   };
+
+
 
   public loadAndScheduleReminders = async (): Promise<void> => {
     const reminders = await ReminderModel.find({ notificationSent: false });

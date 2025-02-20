@@ -245,7 +245,7 @@ const whatsappWorker = new Worker('whatsapp-messages', async (job: Job) => {
 });
 
 
-interface EmailJob  extends Job {
+interface EmailJob extends Job {
     data: {
         leads: any[];
         emailSubject: string;
@@ -259,7 +259,7 @@ interface EmailJob  extends Job {
 }
 
 // Enhanced email worker with detailed logging
-const emailWorker = new Worker('email-messages', async (job: EmailJob ) => {
+const emailWorker = new Worker('email-messages', async (job: EmailJob) => {
     const { leads, emailSubject, customHTML, emailData, type, emailBodyType, mailServiceData, file } = job.data;
     let processed = 0;
     let failed = 0;
@@ -369,7 +369,7 @@ interface PosterJob {
             noteStyle?: TextStyle;
             backgroundId: mongoose.Types.ObjectId
             iconId: mongoose.Types.ObjectId
-}
+        }
 
         whatsappData: {
             leads: {
@@ -421,7 +421,7 @@ const posterWorker = new Worker('poster-messages',
                 [lead.phone],
                 posterBuffer,
                 whatsappData.mediaOptions,
-                { user: whatsappData.userId, engagementID: whatsappData.engagementId }
+                { user: whatsappData.userId, engagementID: whatsappData.engagementId}
             );
         }
     }, {

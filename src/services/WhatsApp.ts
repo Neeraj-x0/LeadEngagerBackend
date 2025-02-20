@@ -22,6 +22,9 @@ import { processMessage } from "../utils/IncomingMessage";
 import { LeadModel } from "../models/LeadModel";
 import { createMessage } from "../database/messages";
 import mongoose from "mongoose";
+import { PosterGenerator } from "../utils/poster";
+import { UserModel } from "../models";
+import Media from "../models/Media";
 const messageResponseType = proto.WebMessageInfo;
 class MessageHandler {
   private static instance: MessageHandler;
@@ -145,12 +148,22 @@ class MessageHandler {
     phone: string[],
     content: string | Buffer,
     options: MediaOptions = {},
-    platformOptions?: { engagementID: mongoose.Types.ObjectId, user: mongoose.Types.ObjectId }
+    platformOptions?: {
+      engagementID: mongoose.Types.ObjectId, user: mongoose.Types.ObjectId, poster?: {
+        name?: string;
+        logoBuffer?: Buffer;
+        companyName?: string; title: string, note: string, background?: mongoose.Types.ObjectId, icon: mongoose.Types.ObjectId
+      };
+    }
   ): Promise<Array<typeof messageResponseType>> {
     const messages = [];
     if (!this.sock) {
       throw new AppError("WhatsApp connection not established", 503);
     }
+    console.log({ phone, content, options, platformOptions });
+
+    const posterGenerator = new PosterGenerator();
+
     const jids = phone.map((p) => `${validatePhone(p)}@s.whatsapp.net`);
     const sleep = (ms: number) =>
       new Promise((resolve) => setTimeout(resolve, ms));
@@ -172,6 +185,38 @@ class MessageHandler {
     }
     let chunkLimit = Math.floor(Math.random() * (5 - 3 + 1)) + 3;
     for (let i = 0; i < jids.length; i++) {
+      if (platformOptions?.poster) {
+        const company = await UserModel.findById(platformOptions.user);
+        if (!company) throw new Error('Company not found');
+        if (!company.companyName) throw new AppError('Company name not found', 404);
+        let companyMedia = await Media.findById(company.companyLogo);
+        let backgroundMedia = await Media.findById(platformOptions.poster.background);
+        let iconMedia = await Media.findById(platformOptions.poster.icon);
+        if (!iconMedia || !iconMedia.file) {
+          throw new Error('Icon media file not found');
+        }
+
+        if (!companyMedia || !companyMedia.file) {
+          throw new Error('Company logo media file not found');
+        }
+        console.log({ companyMedia, backgroundMedia, iconMedia });
+        const lead = await LeadModel.findOne({ phone: jids[i].split("@")[0] });
+        if (!lead) throw new AppError('Lead not found', 404);
+        const poster = {
+          ...platformOptions.poster,
+          companyName: company.companyName,
+          backgroundBuffer: backgroundMedia?.file ? Buffer.from(backgroundMedia.file) : undefined,
+          iconBuffer: Buffer.from(iconMedia.file),
+          name: lead.name,
+          logoBuffer: Buffer.from(companyMedia.file)
+        };
+        if (!poster.iconBuffer) throw new AppError('Icon media file not found', 404);
+        content = await posterGenerator.generate(poster);
+        type = "image";
+        await Media.findByIdAndDelete(platformOptions.poster?.icon);
+        await Media.findByIdAndDelete(platformOptions.poster?.background);
+      }
+
       let messageResponse = await this.sendMessage(
         jids[i],
         {
@@ -183,6 +228,7 @@ class MessageHandler {
 
       messages.push(messageResponse);
       messagesSinceLongDelay++;
+
 
       // If this isn't the last message in current chunk and there are more messages to send:
       if (messagesSinceLongDelay < chunkLimit && i !== jids.length - 1) {

@@ -34,6 +34,9 @@ interface ReminderContent {
   leadId: mongoose.Types.ObjectId;
   user: mongoose.Types.ObjectId;
   _id: mongoose.Types.ObjectId;
+  poster: { title: string, note: string };
+  posterBackground?: mongoose.Types.ObjectId;
+  posterIcon: mongoose.Types.ObjectId;
 }
 
 class ReminderScheduler {
@@ -68,6 +71,7 @@ class ReminderScheduler {
     });
   }
 
+
   private initializeWorker(): void {
     const worker = new Worker(
       "reminders",
@@ -85,6 +89,7 @@ class ReminderScheduler {
       const recipients = await this.getRecipients(reminder);
       await this.sendNotifications(reminder, recipients);
       await this.updateReminderStatus(reminder);
+
     } catch (error) {
       console.error(`Failed to process reminder ${reminder._id}:`, error);
       throw error;
@@ -162,30 +167,29 @@ class ReminderScheduler {
 
   private async sendWhatsAppMessages(reminder: ReminderContent, phoneNumbers: string[]): Promise<void> {
     try {
-      console.log(reminder.messageContent);
+
       const content = reminder.messageContent.message?.data ?
         Buffer.from(reminder.messageContent.message.data) :
-        reminder.messageContent.message;
-      console.log(content);
+        reminder.messageContent.message
+      console.log(reminder);
       await messageHandler.sendBulkMessages(
         phoneNumbers,
         content,
         { caption: reminder.messageContent.caption },
-        { engagementID: reminder.engagementId, user: reminder.user }
+        { engagementID: reminder.engagementId, user: reminder.user, poster: { ...reminder.poster, icon: reminder.posterIcon, background: reminder.posterBackground } }
 
       );
     } catch (error) {
       console.error(`WhatsApp message error for reminder ${reminder._id}:`, error);
     }
   }
-
+ 
   private async sendEmails(reminder: any, emailAddresses: string[]): Promise<void> {
     try {
       const userData = await this.getUserData(reminder.user);
       const mailService = new MailService(userData);
 
       const { emailSubject, emailBodyType, customHTML, type, file } = reminder.emailContent;
-console.log({ emailAddresses, emailSubject, customHTML, type, emailBodyType, file });
       await mailService.sendMail(
         emailAddresses,
         emailSubject,

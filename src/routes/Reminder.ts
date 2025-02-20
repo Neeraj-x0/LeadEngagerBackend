@@ -53,12 +53,18 @@ router.post("/:id", catchAsync(async (req: Request, res: Response) => {
 
   // Get the file from the parsed request
   let file: Express.Multer.File | undefined;
+  let backgroundBuffer: Buffer | undefined;
+  let iconBuffer: Buffer | undefined;
   if (req.files) {
     if (Array.isArray(req.files)) {
       file = req.files.find(f => f.fieldname === "file");
+      backgroundBuffer = req.files.find(f => f.fieldname === "background")?.buffer;
+      iconBuffer = req.files.find(f => f.fieldname === "icon")?.buffer;
     } else {
       const fileArray = Object.values(req.files).flat();
       file = fileArray.find(f => f.fieldname === "file");
+      backgroundBuffer = fileArray.find(f => f.fieldname === "background")?.buffer;
+      iconBuffer = fileArray.find(f => f.fieldname === "icon")?.buffer;
     }
   }
   // Determine the category based on provided content
@@ -73,6 +79,16 @@ router.post("/:id", catchAsync(async (req: Request, res: Response) => {
     ? await parseEmailContent(email, file)
     : null;
 
+  let iconID, backgroundID;
+
+  if (iconBuffer) {
+    iconID = (await Media.create({ file: iconBuffer }))._id;
+  }
+
+  if (backgroundBuffer) {
+    backgroundID = (await Media.create({ file: backgroundBuffer }))._id;
+  }
+console.log(iconID, backgroundID)
   // Create reminder document
   const reminderDoc = await ReminderModel.create({
     leadId: parsedRequest.params.id.length < 8 ? parsedRequest.params.id : null,
@@ -84,7 +100,9 @@ router.post("/:id", catchAsync(async (req: Request, res: Response) => {
     category,
     messageContent: messageContentParsed,
     emailContent: emailContentParsed,
-    poster: poster,
+    poster,
+    posterIcon: iconID,
+    posterBackground: backgroundID,
     user: parsedRequest.user._id,
   });
 

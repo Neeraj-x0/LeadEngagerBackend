@@ -46,6 +46,17 @@ const reminderSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  poster: {
+    type: mongoose.Schema.Types.Mixed,
+  },
+  posterIcon: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Media",
+  },
+  posterBackground: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Media",
+  },
   // Flag to indicate that the reminder has been scheduled in memory.
   isScheduled: {
     type: Boolean,

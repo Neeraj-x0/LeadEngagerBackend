@@ -185,7 +185,7 @@ class MessageHandler {
     }
     let chunkLimit = Math.floor(Math.random() * (5 - 3 + 1)) + 3;
     for (let i = 0; i < jids.length; i++) {
-      if (platformOptions?.poster) {
+      if (platformOptions?.poster?.title && platformOptions?.poster?.note && platformOptions?.poster?.icon) {
         const company = await UserModel.findById(platformOptions.user);
         if (!company) throw new Error('Company not found');
         if (!company.companyName) throw new AppError('Company name not found', 404);

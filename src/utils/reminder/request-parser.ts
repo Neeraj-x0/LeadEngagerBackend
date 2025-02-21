@@ -6,7 +6,7 @@ export interface ReminderDomain {
   title: string;
   description: string;
   scheduledAt: string;
-  frequency: 'daily' | 'weekly' | 'monthly';
+  frequency: 'daily' | 'weekly' | 'monthly' | 'once';
 }
 
 export interface WhatsAppDomain {
@@ -108,8 +108,8 @@ function parseBody(rawBody: any): DomainStructuredMessage {
   }
 }
 
-function validateFrequency(frequency: any): 'daily' | 'weekly' | 'monthly' {
-  if (!['daily', 'weekly', 'monthly'].includes(frequency)) {
+function validateFrequency(frequency: any): 'daily' | 'weekly' | 'monthly' | 'once' {
+  if (!['daily', 'weekly', 'monthly', 'once'].includes(frequency)) {
     throw new Error('Invalid frequency value');
   }
   return frequency;

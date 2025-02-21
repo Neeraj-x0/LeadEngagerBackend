@@ -382,26 +382,27 @@ router.post(
 
 // DELETE /engagements/:id - Delete an engagement
 router.delete(
-  "/:id",
+  "/",
   catchAsync(async (req: Request, res: Response) => {
     const { id } = req.user;
+    const { selectedIds } = req.body;
 
-    if (!isValidObjectId(req.params.id)) {
+    if (!Array.isArray(selectedIds) || !selectedIds.every(isValidObjectId)) {
       return res.status(400).json({
         status: "fail",
-        message: "Invalid engagement ID Provided",
+        message: "Invalid engagement ID(s) provided",
       });
     }
 
-    const engagement = await EngagementModel.findOneAndDelete({
-      _id: req.params.id,
+    const result = await EngagementModel.deleteMany({
+      _id: { $in: selectedIds },
       user: id,
     });
 
-    if (!engagement) {
+    if (result.deletedCount === 0) {
       return res.status(404).json({
         status: "fail",
-        message: "Engagement not found",
+        message: "No engagements found to delete",
       });
     }
 

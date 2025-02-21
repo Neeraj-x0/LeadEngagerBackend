@@ -19,6 +19,7 @@ import ReminderRouter from "./routes/Reminder";
 import testRouter from "./routes/testRoutes";
 import statusRouter from "./routes/status";
 import generateRouter from "./routes/posterGenerator";
+import ChatbotRouter from "./routes/chatbot";
 import mediaRouter from "./routes/files";
 import analyticsRouter from "./routes/Dashboard";
 import { validateJWT } from "./middlewares/jwtValidator";
@@ -96,6 +97,7 @@ app.use("/api/generate", generateRouter);
 app.use("/test", testRouter);
 app.use("/media", mediaRouter);
 app.use("/api/analytics", analyticsRouter);
+app.use("/api/chatbot", ChatbotRouter);
 
 
 

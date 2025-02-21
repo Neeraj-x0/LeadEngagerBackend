@@ -24,10 +24,12 @@ async function serialize(conn: ExtendedWASocket, message: ExtendedIMessageInfo):
       isGroup: message.key.remoteJid?.endsWith("@g.us") || false
     });
   }
-  const lead = message.from ? (await LeadModel.findOne({ phone: message.from.split("@")[0] }))?._id : null;
+  const lead = message.from ? (await LeadModel.findOne({ phone: message.from.split("@")[0] })) : null;
   if (lead) {
-    message.leadID = lead;
+    message.leadID = lead._id;
+    message.userID = lead.user
   }
+
   message.type = getContentType(message.message);
   let parsedType: string = parseType(message.message);
 

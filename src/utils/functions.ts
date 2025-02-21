@@ -83,7 +83,7 @@ function parseExcelBuffer(buffer: Buffer): LeadData[] {
  */
 async function processLeadsConcurrently(
   leads: LeadData[],
-  defaultCategory: string,
+  defaultCategory: string ,
   user: string,
   concurrency: number = 50
 ): Promise<ImportResult> {

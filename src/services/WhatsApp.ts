@@ -96,7 +96,6 @@ class MessageHandler {
       throw new AppError("WhatsApp connection not established", 503);
     }
 
-    console.log({ jid, content, options, platformOptions });
     try {
       const result = await this.sock.sendMessage(jid, {
         ...content,
@@ -104,7 +103,7 @@ class MessageHandler {
         fileName: options.fileName || "file",
         mimetype: options.mimetype || "",
       });
-
+      console.log(result?.message)
       if (!result) {
         throw new AppError("Failed to send message: No result returned", 500);
       }
@@ -212,8 +211,6 @@ class MessageHandler {
         if (!poster.iconBuffer) throw new AppError('Icon media file not found', 404);
         content = await posterGenerator.generate(poster);
         type = "image";
-        await Media.findByIdAndDelete(platformOptions.poster?.icon);
-        await Media.findByIdAndDelete(platformOptions.poster?.background);
       }
 
       let messageResponse = await this.sendMessage(
@@ -242,6 +239,10 @@ class MessageHandler {
         messagesSinceLongDelay = 0;
         chunkLimit = Math.floor(Math.random() * (5 - 3 + 1)) + 3;
       }
+    }
+    if (platformOptions && platformOptions.poster?.icon) {
+      await Media.findByIdAndDelete(platformOptions.poster?.icon);
+      await Media.findByIdAndDelete(platformOptions.poster?.background);
     }
     return messages;
   }

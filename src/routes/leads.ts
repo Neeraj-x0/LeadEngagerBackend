@@ -44,13 +44,22 @@ router.post(
 router.post(
   "/bulk-import",
   catchAsync(async (req: Request, res: Response) => {
-    const fileBuffer = req.file?.buffer;
-    if (!fileBuffer) {
+    let file;
+    if (req.files) {
+      if (Array.isArray(req.files)) {
+        file = req.files.find(f => f.fieldname === "file")
+      } else {
+        const fileArray = Object.values(req.files).flat();
+        file = fileArray.find(f => f.fieldname === "file")
+      }
+    }
+    if (!file) {
       throw new Error("No file uploaded");
     }
+    let fileBuffer = file.buffer;
     let body = parseBody(req.body);
-    let category = body.category;
-    let ext = req.file?.originalname.split(".").pop();
+    let category = body?.category || undefined;
+    let ext = file.originalname.split(".").pop();
     if (!ext) {
       throw new Error("File type not supported");
     }

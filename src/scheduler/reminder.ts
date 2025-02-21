@@ -182,7 +182,7 @@ class ReminderScheduler {
       console.error(`WhatsApp message error for reminder ${reminder._id}:`, error);
     }
   }
-
+  
   private async sendEmails(reminder: any, emailAddresses: string[]): Promise<void> {
     try {
       const userData = await this.getUserData(reminder.user);

@@ -38,6 +38,7 @@ interface ExtendedWASocket extends WASocket {
     getFile?: (PATH: string | Buffer, returnAsFilename?: boolean) => Promise<FileData>;
 }
 interface ExtendedIMessageInfo extends proto.IWebMessageInfo {
+    userID: mongoose.Types.ObjectId;
     leadID: mongoose.Types.ObjectId
     download: (pathFile: string) => Promise<string | Buffer<ArrayBufferLike>>;
     text?: string

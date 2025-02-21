@@ -18,7 +18,7 @@ async function processMessage(messageUpsert: IncomingMessage, sock: WASocket) {
     if (message.leadID) await updateReplyStatus(message.leadID)
     conn.readMessages([message.key])
     if (message.key.remoteJid === "status@broadcast" || message.isGroup || !message.text) return
-    const botResponse = await bot.getResponse(message.text);
+    const botResponse = await bot.getResponse(message.text, message.userID || "");
     if (botResponse && message.from) {
         const response = await conn.sendMessage(message.from, { text: botResponse }, { quoted: messages[0] });
         console.log(response)

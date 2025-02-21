@@ -5,7 +5,7 @@ interface ReminderDomain {
   title: string;
   description: string;
   scheduledAt: string;
-  frequency: 'daily' | 'weekly' | 'monthly';
+  frequency: 'daily' | 'weekly' | 'monthly' | 'once';
 }
 
 interface WhatsAppDomain {

@@ -26,6 +26,7 @@ import { LeadModel } from "../models/LeadModel";
 import mongoose from "mongoose";
 import Media from "../models/Media";
 import { log } from "../utils/logger";
+import { MessageModel } from "../models";
 const router = express.Router();
 
 
@@ -336,9 +337,12 @@ router.get(
       .sort({ lastMessage: -1 })
       .populate("messages");
 
+  const totalMessages = await MessageModel.countDocuments({ engagement: { $ne: null } });
+
+
     res.status(200).json({
       status: "success",
-      data: engagements,
+      data: {engagements},
     });
   })
 );

@@ -33,8 +33,7 @@ const EngagementSchema = new Schema<IEngagement>({
     ref: "Status", // Reference to Status collection
     validate: {
       validator: async function (this: any, value: string): Promise<boolean> {
-        // Ensure that a Status with the given name exists
-        const status = await mongoose.model("Status").findOne({ name: value });
+        const status = await mongoose.model("Status").findOne({ name: value, user: this.user });
         return status !== null;
       },
       message: "Status must exist in StatusModel",

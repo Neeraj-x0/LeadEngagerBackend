@@ -18,6 +18,7 @@ const leadModelSchema = new mongoose.Schema({
   phone: {
     type: String,
     required: true,
+    unique: true,
   },
   user: {
     type: mongoose.Schema.Types.ObjectId,

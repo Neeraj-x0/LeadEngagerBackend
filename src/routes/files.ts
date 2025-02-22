@@ -2,6 +2,7 @@ import { Router, Response } from "express";
 import { Request } from "../types";
 import { catchAsync } from "../utils/errorHandler";
 import Media from "../models/Media";
+import { UserModel } from "../models";
 
 const router = Router();
 
@@ -17,6 +18,21 @@ router.get(
     return res.send(media.file);
   })
 );
+
+router.get("/logo", catchAsync(async (req: Request, res: Response) => {
+  const userID = req.user.id;
+  const user = await UserModel.findById(userID
+  );
+  if (user) {
+    res.json({ logo: user.companyLogo });
+  }
+  else {
+    res.status(404).json({ message: "User not found" });
+  }
+
+}));
+
+
 
 
 export default router;

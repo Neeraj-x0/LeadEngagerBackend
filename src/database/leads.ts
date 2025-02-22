@@ -11,6 +11,9 @@ async function createLead(lead: any, user: string) {
     // Generate a unique 6-digit ID based on user data
     let id = generateUniqueId(lead);
 
+    const existingLead = await LeadModel.findOne({ phone: lead.phone, user })
+    if (existingLead) return
+
     // Check if the generated ID already exists in the database
     let leadExists = await LeadModel.findOne({ id: id, user });
 

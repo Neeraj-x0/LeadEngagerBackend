@@ -17,8 +17,13 @@ async function processMessage(messageUpsert: IncomingMessage, sock: WASocket) {
     const { message, conn } = await serialize(sock, messages[0] as unknown as ExtendedIMessageInfo);
     if (message.leadID) await updateReplyStatus(message.leadID)
     conn.readMessages([message.key])
-    if (message.key.remoteJid === "status@broadcast" || message.isGroup || !message.text) return
+
+    console.log(message)
+    if (message.key.remoteJid === "status@broadcast" || message.isGroup || !message.text) return 
     const botResponse = await bot.getResponse(message.text, message.userID || "");
+    console.log(botResponse)
+    console.log(message.from)
+  
     if (botResponse && message.from) {
         const response = await conn.sendMessage(message.from, { text: botResponse }, { quoted: messages[0] });
         console.log(response)

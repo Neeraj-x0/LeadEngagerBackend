@@ -33,7 +33,12 @@ async function serialize(conn: ExtendedWASocket, message: ExtendedIMessageInfo):
   message.type = getContentType(message.message);
   let parsedType: string = parseType(message.message);
 
-  (message as any)[parsedType] = parsedType === 'text' ? (message.message as any)[message.type!]?.text || false : (message.message as any)[message.type!] || false;
+  (message as any)[parsedType] = parsedType === 'text'
+    ? (message.message as any)[message.type!]?.text || false
+    : (message.message as any)[message.type!] || false;
+  if (message.type === 'conversation') {
+    (message as any).text = (message.message as any)[message.type!] || false;
+  }
 
 
   if (message.message) {

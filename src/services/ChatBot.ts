@@ -74,9 +74,12 @@ Your effectiveness is measured by response speed, engagement quality, successful
 
   async getResponse(prompt: string, user: mongoose.Types.ObjectId): Promise<string> {
     try {
-      const Systemprompt = (await ChatBotPrompt.findOne({
-        user,
-      }))?.prompt || ChatBotService.SYSTEM_PROMPT;
+      let Systemprompt = ChatBotService.SYSTEM_PROMPT;
+      if (user) {
+        Systemprompt = (await ChatBotPrompt.findOne({
+          user,
+        }))?.prompt || ChatBotService.SYSTEM_PROMPT;
+      }
       const chat = this.model.startChat({
         history: [
           {

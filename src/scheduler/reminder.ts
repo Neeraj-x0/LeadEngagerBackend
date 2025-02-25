@@ -12,7 +12,6 @@ import Redis from "ioredis";
 import moment from "moment-timezone";
 import mongoose from "mongoose";
 
-
 moment.tz.setDefault("Asia/Kolkata");
 
 // Types for better type safety and clarity
@@ -71,7 +70,6 @@ class ReminderScheduler {
     });
   }
 
-
   private initializeWorker(): void {
     const worker = new Worker(
       "reminders",
@@ -89,9 +87,63 @@ class ReminderScheduler {
       await this.sendNotifications(reminder, recipients);
       await this.updateReminderStatus(reminder);
 
+      // NEW: Handle recurring reminders after successful processing
+      if (reminder.frequency && reminder.frequency !== 'once') {
+        await this.scheduleNextOccurrence(reminder);
+      }
     } catch (error) {
       console.error(`Failed to process reminder ${reminder._id}:`, error);
       throw error;
+    }
+  }
+
+  // NEW: Calculate and schedule the next occurrence of a recurring reminder
+  private async scheduleNextOccurrence(reminder: any): Promise<void> {
+    try {
+      // Calculate the next scheduled time based on frequency
+      const nextScheduledAt = this.calculateNextScheduleTime(reminder);
+
+      // Create a new reminder document for the next occurrence
+      const nextReminder = new ReminderModel({
+        ...reminder.toObject ? reminder.toObject() : reminder, // Handle both document and plain object
+        _id: new mongoose.Types.ObjectId(), // Generate new ID
+        scheduledAt: nextScheduledAt,
+        notificationSent: false,
+        isScheduled: false,
+        // Don't copy over metadata properties
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      // Save the new reminder
+      await nextReminder.save();
+
+      // Schedule the new reminder
+      await this.scheduleReminder(nextReminder);
+
+      console.log(`Scheduled next ${reminder.frequency} occurrence for reminder ${reminder._id} at ${nextScheduledAt}`);
+    } catch (error) {
+      console.error(`Failed to schedule next occurrence for reminder ${reminder._id}:`, error);
+      // Log error but don't throw - we don't want to fail the job if recurring scheduling fails
+    }
+  }
+
+  // NEW: Calculate the next scheduled time based on frequency
+  private calculateNextScheduleTime(reminder: any): Date {
+    const currentSchedule = moment.utc(reminder.scheduledAt);
+
+    switch (reminder.frequency) {
+      case 'daily':
+        return currentSchedule.add(1, 'day').toDate();
+
+      case 'weekly':
+        return currentSchedule.add(1, 'week').toDate();
+
+      case 'monthly':
+        return currentSchedule.add(1, 'month').toDate();
+
+      default: // 'once' or any unexpected value (should not happen)
+        return currentSchedule.toDate();
     }
   }
 
@@ -166,7 +218,6 @@ class ReminderScheduler {
 
   private async sendWhatsAppMessages(reminder: ReminderContent, phoneNumbers: string[]): Promise<void> {
     try {
-
       const content = reminder.messageContent.message?.data ?
         Buffer.from(reminder.messageContent.message.data) :
         reminder.messageContent.message
@@ -176,13 +227,12 @@ class ReminderScheduler {
         content,
         { caption: reminder.messageContent.caption },
         { engagementID: reminder.engagementId, user: reminder.user, poster: { ...reminder.poster, icon: reminder.posterIcon, background: reminder.posterBackground } }
-
       );
     } catch (error) {
       console.error(`WhatsApp message error for reminder ${reminder._id}:`, error);
     }
   }
-  
+
   private async sendEmails(reminder: any, emailAddresses: string[]): Promise<void> {
     try {
       const userData = await this.getUserData(reminder.user);
@@ -229,12 +279,11 @@ class ReminderScheduler {
     });
   }
 
-
-
- public scheduleReminder = async (reminder: any): Promise<void> => {
-    if (reminder.notificationSent) {
-        console.log(`Reminder ${reminder._id} already executed.`);
-        return;
+  public scheduleReminder = async (reminder: any): Promise<void> => {
+    // Modified: Check if this is a one-time reminder that was already sent
+    if (reminder.notificationSent && (!reminder.frequency || reminder.frequency === 'once')) {
+      console.log(`Reminder ${reminder._id} already executed.`);
+      return;
     }
 
     // Create proper Date object with offset
@@ -242,17 +291,19 @@ class ReminderScheduler {
     const utcNow = new Date(currentDate.getTime() + (5.5 * 60 * 60 * 1000));
     const scheduledAt = moment.utc(reminder.scheduledAt);
 
-
     // Compare using the correctly constructed UTC time
     const delay = scheduledAt.isSameOrBefore(utcNow) ? 0 : scheduledAt.diff(utcNow);
 
     await this.reminderQueue.add("execute", { reminder }, { delay });
     await ReminderModel.findByIdAndUpdate(reminder._id, { isScheduled: true });
-};
-
+  };
 
   public loadAndScheduleReminders = async (): Promise<void> => {
-    const reminders = await ReminderModel.find({ notificationSent: false });
+
+    const reminders = await ReminderModel.find({
+      notificationSent: false,
+    });
+
     await Promise.all(reminders.map(reminder => this.scheduleReminder(reminder)));
   };
 

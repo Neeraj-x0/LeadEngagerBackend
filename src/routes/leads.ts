@@ -47,10 +47,10 @@ router.post(
     let file;
     if (req.files) {
       if (Array.isArray(req.files)) {
-        file = req.files.find(f => f.fieldname === "file")
+        file = req.files.find((f) => f.fieldname === "file");
       } else {
         const fileArray = Object.values(req.files).flat();
-        file = fileArray.find(f => f.fieldname === "file")
+        file = fileArray.find((f) => f.fieldname === "file");
       }
     }
     if (!file) {
@@ -64,7 +64,7 @@ router.post(
       throw new Error("File type not supported");
     }
     let import_status = await processImport(
-      fileBuffer as Buffer,
+      fileBuffer,
       ext,
       category,
       req.user.id
@@ -104,9 +104,9 @@ router.put(
   catchAsync(async (req: Request, res: Response) => {
     const { category, status } = req.body;
     if (category) {
-      const lead = await updateCategory(req.params.id, category, req.user.id);
+      await updateCategory(req.params.id, category, req.user.id);
     } else if (status) {
-      const lead = await updateStatus(req.params.id, status, req.user.id);
+      await updateStatus(req.params.id, status, req.user.id);
     }
     res.json({ message: "Lead updated successfully" });
   })

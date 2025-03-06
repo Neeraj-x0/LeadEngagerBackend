@@ -20,7 +20,7 @@ router.post(
   validate(WhatsAppvalidators.textMessage),
   catchAsync(
     async (req: TextMessageRequest, res: Response<WhatsAppResponse>) => {
-      console.log("req.body", req.body);
+     
       const { message } = req.body;
       const { phone } = req.lead;
 

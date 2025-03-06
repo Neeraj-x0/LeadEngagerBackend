@@ -26,6 +26,9 @@ import { PosterGenerator } from "../utils/poster";
 import { UserModel } from "../models";
 import Media from "../models/Media";
 const messageResponseType = proto.WebMessageInfo;
+
+type MessageType = "text" | "image" | "video" | "audio" | "document";
+
 class MessageHandler {
   private static instance: MessageHandler;
   private sock: WASocket | null = null;
@@ -86,6 +89,48 @@ class MessageHandler {
     });
   }
 
+  private async determineMessageType(content: any): Promise<MessageType> {
+    if (Buffer.isBuffer(content)) {
+      return await this.getBufferType(content);
+    }
+    if (typeof content === "object" && content !== null) {
+      const contentType = Object.keys(content)[0];
+      return ["text", "image", "video", "audio", "document"].includes(contentType) 
+        ? contentType as MessageType
+        : "text";
+    }
+    return "text";
+  }
+
+  private async getBufferType(content: Buffer): Promise<MessageType> {
+    const fileTypeResult = await fromBuffer(content);
+    if (!fileTypeResult?.mime) return "document";
+    
+    const category = fileTypeResult.mime.split("/")[0];
+    return ["image", "video", "audio"].includes(category)
+      ? category as MessageType
+      : "document";
+  }
+
+  private async recordMessage(result: any, jid: string, type: MessageType, platformOptions: any) {
+    const receiver = await LeadModel.findOne({ phone: jid.split("@")[0] });
+    if (!receiver) {
+      throw new AppError("Failed to send message: Lead not found", 404);
+    }
+
+    const query: createMessageQuery = {
+      content: result.message,
+      key: result.key,
+      type,
+      receiver: receiver._id
+    };
+
+    if (platformOptions.user) query.user = platformOptions.user;
+    if (platformOptions.engagementID) query.engagementID = platformOptions.engagementID;
+
+    await createMessage(query);
+  }
+
   async sendMessage(
     jid: string,
     content: any,
@@ -97,49 +142,69 @@ class MessageHandler {
     }
 
     try {
-      const result = await this.sock.sendMessage(jid, {
-        ...content,
-        caption: options.caption || "",
-        fileName: options.fileName || "file",
-        mimetype: options.mimetype || "",
-      });
-      console.log(result?.message)
+      const type = await this.determineMessageType(content);
+      const messageContent = Buffer.isBuffer(content)
+        ? { [type]: content, caption: options.caption ?? "", fileName: options.fileName ?? "file" }
+        : content;
+        console.log("Message Type", type)
+      const result = await this.sock.sendMessage(jid, messageContent);
       if (!result) {
         throw new AppError("Failed to send message: No result returned", 500);
       }
-      const receiver = await LeadModel.findOne({ phone: jid.split("@")[0] });
-      if (!receiver) {
-        throw new AppError("Failed to send message: Lead not found", 500);
-      }
-      const contentType = Object.keys(content)[0];
-      let type: "text" | "image" | "video" | "audio" | "document";
-      if (contentType === "text" || contentType === "image" || contentType === "video" || contentType === "audio" || contentType === "document") {
-        type = contentType;
-      } else {
-        throw new AppError("Invalid message type", 400);
-      }
-      const query: createMessageQuery = {
-        content: result.message, key: result.key, type,
-        receiver: receiver._id
-      }
 
-
-      if (platformOptions.user) {
-        query.user = platformOptions.user;
-      }
-      if (platformOptions.engagementID) {
-        query.engagementID = platformOptions.engagementID;
-      }
-
-      await createMessage(query);
+      await this.recordMessage(result, jid, type, platformOptions);
       return result;
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      throw new AppError(
-        `Failed to send ${content.mediaType} message: ${errorMessage}`,
-        500
-      );
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new AppError(`Failed to send message: ${errorMessage}`, 500);
+    }
+  }
+
+  private async handlePosterGeneration(jid: string, platformOptions: any, company: any) {
+    const posterGenerator = new PosterGenerator();
+    const lead = await LeadModel.findOne({ phone: jid.split("@")[0] });
+    if (!lead) throw new AppError('Lead not found', 404);
+
+    const { iconMedia, companyMedia, backgroundMedia } = await this.getMediaFiles(platformOptions, company);
+    
+    const poster = {
+      ...platformOptions.poster,
+      companyName: company.companyName,
+      backgroundBuffer: backgroundMedia?.file ? Buffer.from(backgroundMedia.file) : undefined,
+      iconBuffer: Buffer.from(iconMedia.file),
+      name: lead.name,
+      logoBuffer: Buffer.from(companyMedia.file)
+    };
+    
+    return posterGenerator.generate(poster);
+  }
+
+  private async getMediaFiles(platformOptions: any, company: any) {
+    const companyMedia = await Media.findById(company.companyLogo);
+    const backgroundMedia = await Media.findById(platformOptions.poster.background);
+    const iconMedia = await Media.findById(platformOptions.poster.icon);
+    
+    if (!iconMedia?.file || !companyMedia?.file) {
+      throw new Error('Required media files not found');
+    }
+    
+    return { iconMedia, companyMedia, backgroundMedia };
+  }
+
+  private async sendWithDelay(index: number, total: number, messagesSinceLongDelay: number, chunkLimit: number) {
+    if (index === total - 1) return;
+    
+    if (messagesSinceLongDelay < chunkLimit) {
+      await new Promise(resolve => setTimeout(resolve, 
+        (Math.floor(Math.random() * (17 - 5 + 1)) + 5) * 1000));
+      return { messagesSinceLongDelay: messagesSinceLongDelay + 1, chunkLimit };
+    } else {
+      await new Promise(resolve => setTimeout(resolve, 
+        (Math.floor(Math.random() * (60 - 30 + 1)) + 30) * 1000));
+      return { 
+        messagesSinceLongDelay: 0, 
+        chunkLimit: Math.floor(Math.random() * (5 - 3 + 1)) + 3 
+      };
     }
   }
 
@@ -147,103 +212,46 @@ class MessageHandler {
     phone: string[],
     content: string | Buffer,
     options: MediaOptions = {},
-    platformOptions?: {
-      engagementID: mongoose.Types.ObjectId, user: mongoose.Types.ObjectId, poster?: {
-        name?: string;
-        logoBuffer?: Buffer;
-        companyName?: string; title: string, note: string, background?: mongoose.Types.ObjectId, icon: mongoose.Types.ObjectId
-      };
-    }
+    platformOptions?: any
   ): Promise<Array<typeof messageResponseType>> {
+    if (!this.sock) throw new AppError("WhatsApp connection not established", 503);
+
     const messages = [];
-    if (!this.sock) {
-      throw new AppError("WhatsApp connection not established", 503);
-    }
-    console.log({ phone, content, options, platformOptions });
-
-    const posterGenerator = new PosterGenerator();
-
-    const jids = phone.map((p) => `${validatePhone(p)}@s.whatsapp.net`);
-    const sleep = (ms: number) =>
-      new Promise((resolve) => setTimeout(resolve, ms));
+    const jids = phone.map(p => `${validatePhone(p)}@s.whatsapp.net`);
     let messagesSinceLongDelay = 0;
-    // Set initial chunk limit (random integer between 3 and 5)
-    let type: "text" | "image" | "video" | "audio" | "document" = "text";
-    if (Buffer.isBuffer(content)) {
-      const fileTypeResult = await fromBuffer(content);
-      if (fileTypeResult && fileTypeResult.mime) {
-        const category = fileTypeResult.mime.split("/")[0];
-        if (["image", "video", "audio"].includes(category)) {
-          type = category as "image" | "video" | "audio";
-        } else {
-          type = "document";
-        }
-      } else {
-        type = "document";
-      }
-    }
     let chunkLimit = Math.floor(Math.random() * (5 - 3 + 1)) + 3;
+
     for (let i = 0; i < jids.length; i++) {
-      if (platformOptions?.poster?.title && platformOptions?.poster?.note && platformOptions?.poster?.icon) {
+      let messageContent = content;
+      
+      if (platformOptions?.poster?.title) {
         const company = await UserModel.findById(platformOptions.user);
-        if (!company) throw new Error('Company not found');
-        if (!company.companyName) throw new AppError('Company name not found', 404);
-        let companyMedia = await Media.findById(company.companyLogo);
-        let backgroundMedia = await Media.findById(platformOptions.poster.background);
-        let iconMedia = await Media.findById(platformOptions.poster.icon);
-        if (!iconMedia || !iconMedia.file) {
-          throw new Error('Icon media file not found');
-        }
-        if (!companyMedia || !companyMedia.file) {
-          throw new Error('Company logo media file not found');
-        }
-        console.log({ companyMedia, backgroundMedia, iconMedia });
-        const lead = await LeadModel.findOne({ phone: jids[i].split("@")[0] });
-        if (!lead) throw new AppError('Lead not found', 404);
-        const poster = {
-          ...platformOptions.poster,
-          companyName: company.companyName,
-          backgroundBuffer: backgroundMedia?.file ? Buffer.from(backgroundMedia.file) : undefined,
-          iconBuffer: Buffer.from(iconMedia.file),
-          name: lead.name,
-          logoBuffer: Buffer.from(companyMedia.file)
-        };
-        if (!poster.iconBuffer) throw new AppError('Icon media file not found', 404);
-        content = await posterGenerator.generate(poster);
-        type = "image";
+        if (!company?.companyName) throw new AppError('Company details not found', 404);
+        messageContent = await this.handlePosterGeneration(jids[i], platformOptions, company);
       }
 
-      let messageResponse = await this.sendMessage(
+      const messageResponse = await this.sendMessage(
         jids[i],
-        {
-          [type]: content,
-        },
+        platformOptions?.poster ? { image: messageContent } : messageContent,
         options,
         platformOptions
       );
-
       messages.push(messageResponse);
-      messagesSinceLongDelay++;
 
-
-      // If this isn't the last message in current chunk and there are more messages to send:
-      if (messagesSinceLongDelay < chunkLimit && i !== jids.length - 1) {
-        // Random delay between 5 and 17 seconds
-        const delay = (Math.floor(Math.random() * (17 - 5 + 1)) + 5) * 1000;
-        await sleep(delay);
-      } else if (i !== jids.length - 1) {
-        // End of a chunk: random delay between 30 and 60 seconds
-        const delay = (Math.floor(Math.random() * (60 - 30 + 1)) + 30) * 1000;
-        await sleep(delay);
-        // Reset for next chunk
-        messagesSinceLongDelay = 0;
-        chunkLimit = Math.floor(Math.random() * (5 - 3 + 1)) + 3;
+      const delayResult = await this.sendWithDelay(i, jids.length, messagesSinceLongDelay, chunkLimit);
+      if (delayResult) {
+        ({ messagesSinceLongDelay, chunkLimit } = delayResult);
       }
     }
-    if (platformOptions && platformOptions.poster?.icon) {
-      await Media.findByIdAndDelete(platformOptions.poster?.icon);
-      await Media.findByIdAndDelete(platformOptions.poster?.background);
+
+    if (platformOptions?.poster?.icon) {
+      await Media.deleteMany({ 
+        _id: { 
+          $in: [platformOptions.poster.icon, platformOptions.poster.background] 
+        } 
+      });
     }
+
     return messages;
   }
 }

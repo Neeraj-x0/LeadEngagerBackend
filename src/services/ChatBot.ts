@@ -1,8 +1,8 @@
 import { AppError } from "../utils/errorHandler";
-import { WAMessage } from "baileys";
 import { GoogleGenerativeAI, GenerativeModel } from "@google/generative-ai";
 import mongoose from "mongoose";
 import ChatBotPrompt from "../models/ChatBotPrompt";
+import { functions, sendBrochureDeclaration } from "./FunctionCalls";
 
 class ChatBotService {
   private model!: GenerativeModel;
@@ -59,12 +59,16 @@ Your effectiveness is measured by response speed, engagement quality, successful
     const genAI = new GoogleGenerativeAI(apiKey);
     this.model = genAI.getGenerativeModel({
       model: "gemini-2.0-flash-exp",
+      tools: [
+        {
+          functionDeclarations: [sendBrochureDeclaration]
+        }]
     });
   }
 
   private getGenerationConfig() {
     return {
-      temperature: 0.9, // Slightly reduced for more focused responses
+      temperature: 0.9,
       topP: 0.95,
       topK: 40,
       maxOutputTokens: 8192,
@@ -72,20 +76,19 @@ Your effectiveness is measured by response speed, engagement quality, successful
     };
   }
 
-  async getResponse(prompt: string, user: mongoose.Types.ObjectId): Promise<string> {
+  async getResponse(prompt: string, user: { userID: mongoose.Types.ObjectId, phone: string | null | undefined }): Promise<string> {
     try {
       let Systemprompt = ChatBotService.SYSTEM_PROMPT;
-      if (user) {
+      if (user.userID) {
         Systemprompt = (await ChatBotPrompt.findOne({
-          user,
-        }))?.prompt || ChatBotService.SYSTEM_PROMPT;
+          user: user.userID
+        }))?.prompt ?? ChatBotService.SYSTEM_PROMPT;
       }
       const chat = this.model.startChat({
         history: [
           {
-
             role: "user",
-            parts: [{ text: Systemprompt }],
+            parts: [{ text: Systemprompt + `here is the user details phone ${user.phone} and userID ${user.userID} ,if the user asks to send send it call the function immediately, and don't ask the user for anything related to the contact information like do you want me to send it to this number or not u are a chat bot which interacts with clients so keep it pretty straight forward and also under no circumstances you shouldn't disclose any information like phone number user id etc etc to the user ` }],
           },
           {
             role: "model",
@@ -99,7 +102,15 @@ Your effectiveness is measured by response speed, engagement quality, successful
         generationConfig: this.getGenerationConfig(),
       });
       const result = await chat.sendMessage(prompt);
-      const response = await result.response;
+      const response = result.response;
+      const functionCalls = response.functionCalls();
+      const call = functionCalls && functionCalls.length > 0 ? functionCalls[0] : undefined;
+      if (call) {
+        const functionName = call.name as keyof typeof functions;
+        const functionArgs = call.args as { phoneNumber: string; user: string };
+        const functionResult = await functions[functionName](functionArgs.phoneNumber, functionArgs.user);
+        return functionResult
+      }
       return response.text();
     } catch (error) {
       console.error("Gemini API Error:", error);

@@ -37,7 +37,7 @@ app.use(upload.fields([{ name: "file", maxCount: 1 }, { name: "background", maxC
 
 app.use(
   cors({
-    origin: process.env.ALLOWED_ORIGINS?.split(",") || "*",
+    origin:"*",
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization", "client-id"],
   })

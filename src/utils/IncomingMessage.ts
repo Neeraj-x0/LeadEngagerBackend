@@ -12,21 +12,15 @@ interface IncomingMessage {
     requestId?: string;
 }
 async function processMessage(messageUpsert: IncomingMessage, sock: WASocket) {
-    const { messages, type, requestId } = messageUpsert;
+    const { messages, type } = messageUpsert;
     if (type !== "notify") return
     const { message, conn } = await serialize(sock, messages[0] as unknown as ExtendedIMessageInfo);
     if (message.leadID) await updateReplyStatus(message.leadID)
     conn.readMessages([message.key])
-
-    console.log(message)
-    if (message.key.remoteJid === "status@broadcast" || message.isGroup || !message.text) return 
-    const botResponse = await bot.getResponse(message.text, message.userID || "");
-    console.log(botResponse)
-    console.log(message.from)
-  
+    if (message.key.remoteJid === "status@broadcast" || message.isGroup || !message.text) return
+    const botResponse = await bot.getResponse(message.text, { userID: message.userID, phone: message.from });
     if (botResponse && message.from) {
-        const response = await conn.sendMessage(message.from, { text: botResponse }, { quoted: messages[0] });
-        console.log(response)
+        await conn.sendMessage(message.from, { text: botResponse }, { quoted: messages[0] });
     }
 
 
